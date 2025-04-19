@@ -830,9 +830,7 @@ class VideoMaker:
                         product_audio_path = os.path.join(temp_dir, f"product_{rank}_audio.wav")
                         
                         # 必ず音声を生成するか確認するためのログ
-                        logger.info(f"製品 {rank} の音声生成開始: {product_intro_text}")
                         success = generate_narration(product_intro_text, product_audio_path, "random")
-                        logger.info(f"製品 {rank} の音声生成結果: {success}, ファイル存在: {os.path.exists(product_audio_path)}")
                         
                         # 製品画像の動画セグメントを作成
                         product_video_path = os.path.join(temp_dir, f"product_{rank}_video.mp4")
@@ -840,7 +838,6 @@ class VideoMaker:
                         # ナレーション音声があれば使用、なければ3秒間の無音
                         if os.path.exists(product_audio_path) and os.path.getsize(product_audio_path) > 100:
                             audio_duration = get_audio_duration(product_audio_path)
-                            logger.info(f"製品 {rank} の音声の長さ: {audio_duration}秒")
                             display_duration = max(audio_duration + 0.5, 3.0)  # 少し余裕を持たせる
                         else:
                             logger.warning(f"製品 {rank} の音声ファイルが存在しないか無効です。無音を使用します。")

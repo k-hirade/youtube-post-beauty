@@ -286,7 +286,6 @@ def generate_with_voicevox(text: str, output_path: str, voice_type: str) -> bool
             query_json["volumeScale"] = 2.8  # 音量調整
             
             # 音声合成リクエスト
-            logger.info(f"VOICEVOX APIリクエスト開始: synthesis, speaker={character_id}")
             response = requests.post(
                 f"{VOICEVOX_ENGINE_URL}/synthesis",
                 params={"speaker": character_id},
