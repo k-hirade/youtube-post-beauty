@@ -27,6 +27,13 @@ htmlcov/
 logs/
 *.log
 
+data/temp/
+data/output/
+data/logs/
+*.sqlite
+*.db
+*.log
+
 # 生成されるメディアファイル
 assets/videos/
 assets/thumbnails/
@@ -70,3 +77,20 @@ Thumbs.db
 *.backup
 tmp/
 temp/
+
+__MACOSX/
+.history/
+coverage.xml
+docker-compose.yml
+*.mp4
+*.mov
+*.mkv
+*.wav
+*.mp3
+*.png
+*.jpg
+*.jpeg
+*.json
+*.env
+*.key
+*.pem
