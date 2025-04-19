@@ -428,37 +428,3 @@ class CosmeDatabase:
         except Exception as e:
             logger.error(f"レビュー取得エラー: {str(e)}")
             return None
-
-
-# モジュールのメイン動作（実行時のテスト用）
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-    db = CosmeDatabase("data/cosme_test.db")
-    
-    # テスト用データ
-    test_product = {
-        "product_id": "12345",
-        "genre": "化粧水",
-        "channel": "ドラッグストア",
-        "name": "テスト化粧水",
-        "brand": "テストブランド",
-        "image_url": "https://example.com/image.jpg",
-        "rank": 1
-    }
-    
-    # 製品保存テスト
-    success = db.save_product(test_product)
-    print(f"製品保存結果: {success}")
-    
-    # 製品取得テスト
-    products = db.get_products_by_criteria("化粧水", "ドラッグストア")
-    print(f"取得した製品数: {len(products)}")
-    
-    # レビュー保存テスト
-    reviews = ["とても潤う", "肌に優しい", "コスパ良し"]
-    db.save_reviews(test_product["product_id"], reviews)
-    
-    # レビュー取得テスト
-    saved_reviews = db.get_reviews(test_product["product_id"])
-    if saved_reviews:
-        print(f"保存したレビュー: {saved_reviews['summaries']}")

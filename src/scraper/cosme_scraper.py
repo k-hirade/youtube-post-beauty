@@ -253,23 +253,3 @@ class CosmeNetScraper:
             )
         
         return collected_products[:min_count] if len(collected_products) >= min_count else collected_products
-
-
-# モジュールのメイン動作（実行時のテスト用）
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-    scraper = CosmeNetScraper()
-    
-    # ドラッグストアの化粧水ランキングを取得
-    products = scraper.get_ranking_products("ドラッグストア", "化粧水")
-    
-    print(f"収集製品数: {len(products)}")
-    for i, product in enumerate(products[:5], 1):
-        print(f"\n--- 製品 {i} ---")
-        print(f"ID: {product['product_id']}")
-        print(f"ランク: {product['rank']}")
-        print(f"名前: {product['name']}")
-        print(f"ブランド: {product['brand']}")
-        print(f"カテゴリ: {', '.join(product['categories'])}")
-        print(f"URL: {product['url']}")
-        print(f"画像: {product['image_url']}")

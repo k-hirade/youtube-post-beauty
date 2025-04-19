@@ -1,0 +1,37 @@
+# アットコスメ動画自動生成システム依存パッケージ
+
+# 基本ユーティリティ
+python-dotenv>=0.19.0  # 環境変数読み込み
+tqdm>=4.62.0           # プログレスバー表示
+click>=8.0.0           # CLIユーティリティ
+
+# ウェブスクレイピング
+requests>=2.26.0       # HTTPリクエスト
+beautifulsoup4>=4.10.0 # HTML解析
+lxml>=4.6.3            # XML/HTMLパーサー
+
+# AI / ML
+openai>=0.27.0         # OpenAI API
+
+# データベース
+# SQLiteは標準ライブラリ
+
+# 画像/動画処理
+pillow>=8.3.1          # 画像処理
+moviepy>=1.0.3         # 動画編集
+ffmpeg-python>=0.2.0   # FFmpegラッパー
+
+# クラウド連携
+google-cloud-storage>=2.0.0  # GCS操作
+
+# 並列処理
+aiohttp>=3.8.0         # 非同期HTTP
+asyncio                # 非同期IO（標準ライブラリ）
+
+# 開発ツール
+pytest>=6.2.5          # テスト
+pytest-cov>=2.12.1     # テストカバレッジ
+ruff>=0.0.138          # リンター
+
+# 通知
+slack-sdk>=3.11.2      # Slack API

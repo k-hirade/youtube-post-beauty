@@ -154,32 +154,3 @@ class ProductSelector:
         
         logger.info(f"製品選定完了: {len(selected_products)}個")
         return selected_products
-
-
-# モジュールのメイン動作（実行時のテスト用）
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-    
-    # テスト用データ
-    test_products = [
-        {"product_id": "1", "name": "化粧水A", "brand": "ブランドX", "channel": "ドラッグストア", "genre": "化粧水", "rank": 1},
-        {"product_id": "2", "name": "化粧水B", "brand": "ブランドY", "channel": "ドラッグストア", "genre": "化粧水", "rank": 2},
-        {"product_id": "3", "name": "美容液C", "brand": "ブランドZ", "channel": "ドラッグストア", "genre": "美容液", "rank": 3},
-        {"product_id": "4", "name": "乳液D", "brand": "ブランドX", "channel": "スーパー", "genre": "乳液", "rank": 4},
-        {"product_id": "5", "name": "化粧水E", "brand": "ブランドY", "channel": "ドラッグストア", "genre": "化粧水", "rank": 5},
-        {"product_id": "6", "name": "化粧水F", "brand": "ブランドZ", "channel": "ドラッグストア", "genre": "化粧水", "rank": 6},
-        {"product_id": "7", "name": "化粧水G", "brand": "ブランドX", "channel": "ドラッグストア", "genre": "化粧水", "rank": 7},
-        {"product_id": "8", "name": "化粧水H", "brand": "ブランドY", "channel": "ドラッグストア", "genre": "化粧水", "rank": 8},
-        {"product_id": "9", "name": "化粧水I", "brand": "ブランドZ", "channel": "ドラッグストア", "genre": "化粧水", "rank": 9},
-        {"product_id": "10", "name": "化粧水J", "brand": "ブランドX", "channel": "ドラッグストア", "genre": "化粧水", "rank": 10},
-    ]
-    
-    selector = ProductSelector(min_products=7, max_products=10)
-    
-    # ドラッグストアの化粧水選定
-    selected = selector.select_products(test_products, "ドラッグストア", "化粧水")
-    
-    # 選定結果表示
-    print(f"選定製品数: {len(selected)}")
-    for product in selected:
-        print(f"{product['new_rank']}位 (元: {product['original_rank']}位): {product['name']} ({product['brand']})")
