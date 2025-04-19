@@ -30,10 +30,15 @@ VOICEVOX_CHARS = [
 def check_voicevox_available():
     """VOICEVOXエンジンが利用可能かチェック"""
     try:
-        response = requests.get(f"{VOICEVOX_ENGINE_URL}/version")
-        return response.status_code == 200
-    except:
-        logger.warning("VOICEVOXエンジンに接続できません。音声なしで続行します。")
+        response = requests.get(f"{VOICEVOX_ENGINE_URL}/version", timeout=5)
+        if response.status_code == 200:
+            logger.info(f"VOICEVOXエンジンが利用可能です: {response.text}")
+            return True
+        else:
+            logger.warning(f"VOICEVOXエンジンの応答が不正です: {response.status_code}")
+            return False
+    except Exception as e:
+        logger.warning(f"VOICEVOXエンジンに接続できません。エラー: {str(e)}")
         return False
 
 def get_audio_duration(audio_file_path: str) -> float:
@@ -101,15 +106,29 @@ def generate_narration(text: str, output_path: str, voice_type: str = "default")
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         
         # VOICEVOXが利用可能かチェック
-        if check_voicevox_available():
-            return generate_with_voicevox(processed_text, output_path, voice_type)
+        voicevox_available = check_voicevox_available()
+        logger.info(f"VOICEVOXエンジンの利用可能状態: {voicevox_available}")
+        
+        if voicevox_available:
+            result = generate_with_voicevox(processed_text, output_path, voice_type)
+            
+            # 成功したかファイルの存在を確認
+            if os.path.exists(output_path) and os.path.getsize(output_path) > 100:
+                logger.info(f"音声生成成功: {output_path}, サイズ={os.path.getsize(output_path)}バイト")
+                return True
+            else:
+                logger.warning(f"VOICEVOXでの音声生成が失敗または無効なファイルです: {output_path}")
+                logger.info("代替として無音ファイルを生成します")
+                return create_silent_audio(output_path, 3.0)
         else:
             # 音声合成エンジンがない場合は無音ファイルを作成
-            logger.warning("音声合成を行わず、無音ファイルを作成します")
-            return create_silent_audio(output_path, 5.0)  # 5秒間の無音
+            logger.warning("VOICEVOXが利用できないため、無音ファイルを作成します")
+            return create_silent_audio(output_path, 3.0)  # 3秒間の無音
     except Exception as e:
         logger.error(f"音声生成エラー: {e}")
-        return create_silent_audio(output_path, 5.0)  # エラー時も無音ファイルを作成
+        # エラー時も無音ファイルを作成して処理を続行する
+        logger.info("エラーが発生したため、代替として無音ファイルを生成します")
+        return create_silent_audio(output_path, 3.0)
 
 def create_silent_audio(output_path: str, duration: float = 1.0) -> bool:
     """
@@ -239,7 +258,6 @@ def generate_with_voicevox(text: str, output_path: str, voice_type: str) -> bool
             char_info = random.choice(VOICEVOX_CHARS)
         else:
             # voice_typeに応じた選択ロジックを追加（必要に応じて）
-            # 例: "male"なら男性キャラ、"female"なら女性キャラ
             char_info = random.choice(VOICEVOX_CHARS)
             
         character_id = char_info["id"]
@@ -252,45 +270,60 @@ def generate_with_voicevox(text: str, output_path: str, voice_type: str) -> bool
             if len(text) > 1000:
                 text = text[:997] + "..."
             
+            logger.info(f"VOICEVOX APIリクエスト開始: audio_query, text='{text}', speaker={character_id}")
             response = requests.post(
                 f"{VOICEVOX_ENGINE_URL}/audio_query",
                 params={"text": text, "speaker": character_id},
-                timeout=30  # タイムアウトを増やす
+                timeout=30
             )
             
             if response.status_code != 200:
-                logger.error(f"VOICEVOX クエリ生成失敗: {response.text}")
+                logger.error(f"VOICEVOX クエリ生成失敗: ステータスコード={response.status_code}, 応答={response.text}")
                 return False
-                
+            
+            logger.info("VOICEVOX クエリ生成成功")
             query_json = response.json()
             query_json["volumeScale"] = 2.8  # 音量調整
             
             # 音声合成リクエスト
+            logger.info(f"VOICEVOX APIリクエスト開始: synthesis, speaker={character_id}")
             response = requests.post(
                 f"{VOICEVOX_ENGINE_URL}/synthesis",
                 params={"speaker": character_id},
                 data=json.dumps(query_json),
                 headers={"Content-Type": "application/json"},
-                timeout=60  # 長いテキストの場合は時間がかかるため、タイムアウトを増やす
+                timeout=60
             )
             
             if response.status_code != 200:
-                logger.error(f"VOICEVOX 音声合成失敗: {response.text}")
+                logger.error(f"VOICEVOX 音声合成失敗: ステータスコード={response.status_code}, 応答={response.text}")
                 return False
-                
+            
+            logger.info(f"VOICEVOX 音声合成成功: コンテンツサイズ={len(response.content)}バイト")
+            
             # 音声ファイルを保存
             with open(output_path, "wb") as f:
                 f.write(response.content)
             
-            logger.info(f"VOICEVOX 音声生成成功: {output_path}")
+            # ファイルサイズを確認
+            if os.path.getsize(output_path) < 100:
+                logger.warning(f"生成された音声ファイルが小さすぎます: {os.path.getsize(output_path)}バイト")
+                return create_silent_audio(output_path, 3.0)
+            
+            logger.info(f"VOICEVOX 音声ファイル保存成功: {output_path}, サイズ={os.path.getsize(output_path)}バイト")
+            
+            # 音声の長さを取得し、ログに記録
+            duration = get_audio_duration(output_path)
+            logger.info(f"生成された音声の長さ: {duration}秒")
+            
             return True
         except requests.exceptions.RequestException as e:
             logger.error(f"VOICEVOX APIリクエストエラー: {e}")
-            return create_silent_audio(output_path, 5.0)  # エラー時は無音ファイル
+            return create_silent_audio(output_path, 3.0)  # エラー時は無音ファイル
             
     except Exception as e:
         logger.error(f"VOICEVOX 音声生成エラー: {e}")
-        return create_silent_audio(output_path, 5.0)  # エラー時は無音ファイル
+        return create_silent_audio(output_path, 3.0)  # エラー時は無音ファイル
 
 def merge_audio_files(audio_files: list, output_path: str) -> bool:
     """

@@ -1,5 +1,5 @@
 """
-@file: product_video_maker.py
+@file: video_maker.py
 @desc: FFmpegを直接使用して縦型ショート動画を作成するモジュール
 """
 
@@ -558,196 +558,194 @@ class VideoMaker:
         img.save(path)
     
     def create_video(
-        self,
-        products: List[Dict[str, Any]],
-        title: str,
-        output_filename: Optional[str] = None
-    ) -> str:
-        """
-        製品リストからショート動画を作成
-        
-        Args:
-            products: 製品情報リスト
-            title: 動画タイトル
-            output_filename: 出力ファイル名
-        
-        Returns:
-            str: 作成した動画のパス
-        """
-        logger.info(f"動画作成開始: {title}")
-        
-        # 出力ファイル名が指定されていない場合は生成
-        if not output_filename:
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            safe_title = ''.join(c if c.isalnum() else '_' for c in title)
-            output_filename = f"{safe_title}_{timestamp}.mp4"
-        
-        output_path = os.path.join(self.output_dir, output_filename)
-        
-        # 製品リストをシャッフルして順位を割り当て
-        shuffled_products = random.sample(products, len(products))
-        for i, product in enumerate(shuffled_products):
-            product['new_rank'] = i + 1  # 1位から順に割り当て
-        
-        try:
-            # 一時ディレクトリを作成
-            with tempfile.TemporaryDirectory() as temp_dir:
-                # 動画セグメントのパスリスト
-                video_segments = []
-                
-                # 各製品ごとに動画セグメントを作成
-                for product in shuffled_products:
-                    rank = product['new_rank']
-                    product_name = product['name']
-                    brand_name = product['brand']
-                    reviews = product.get('reviews', [])
+            self,
+            products: List[Dict[str, Any]],
+            title: str,
+            output_filename: Optional[str] = None
+        ) -> str:
+            """
+            製品リストからショート動画を作成
+            
+            Args:
+                products: 製品情報リスト
+                title: 動画タイトル
+                output_filename: 出力ファイル名
+            
+            Returns:
+                str: 作成した動画のパス
+            """
+            logger.info(f"動画作成開始: {title}")
+            
+            # 出力ファイル名が指定されていない場合は生成
+            if not output_filename:
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                safe_title = ''.join(c if c.isalnum() else '_' for c in title)
+                output_filename = f"{safe_title}_{timestamp}.mp4"
+            
+            output_path = os.path.join(self.output_dir, output_filename)
+            
+            # 製品リストをシャッフルして順位を割り当て
+            shuffled_products = random.sample(products, len(products))
+            for i, product in enumerate(shuffled_products):
+                product['new_rank'] = i + 1  # 1位から順に割り当て
+            
+            try:
+                # 一時ディレクトリを作成
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    # 動画セグメントのパスリスト
+                    video_segments = []
                     
-                    # 製品名・ブランド名だけのナレーション用テキスト
-                    product_intro_text = f"{rank}位、{brand_name}の{product_name}"
-                    
-                    # 1. 製品画像のみのスライド
-                    product_slide = self._create_product_slide(product, rank)
-                    product_slide_path = os.path.join(temp_dir, f"product_{rank}_slide.png")
-                    product_slide.save(product_slide_path)
-                    
-                    # 製品紹介ナレーション音声を生成
-                    product_audio_path = os.path.join(temp_dir, f"product_{rank}_audio.wav")
-                    generate_narration(product_intro_text, product_audio_path, "random")
-                    
-                    # 製品画像の動画セグメントを作成
-                    product_video_path = os.path.join(temp_dir, f"product_{rank}_video.mp4")
-                    
-                    # ナレーション音声があれば使用、なければ3秒間の無音
-                    if os.path.exists(product_audio_path):
-                        audio_duration = get_audio_duration(product_audio_path)
-                        display_duration = max(audio_duration + 0.5, 3.0)  # 少し余裕を持たせる
-                    else:
-                        display_duration = 3.0
-                    
-                    # 製品スライドを動画に変換
-                    cmd = [
-                        "ffmpeg", "-y",
-                        "-loop", "1",
-                        "-i", product_slide_path
-                    ]
-                    
-                    if os.path.exists(product_audio_path):
-                        cmd.extend(["-i", product_audio_path])
-                        cmd.extend([
-                            "-c:v", "libx264",
-                            "-tune", "stillimage",
-                            "-c:a", "aac",
-                            "-b:a", "192k",
-                            "-pix_fmt", "yuv420p",
-                            "-shortest"
-                        ])
-                    else:
-                        # 無音の場合は固定時間
-                        silent_audio = os.path.join(temp_dir, f"silent_{rank}.wav")
-                        create_silent_audio(silent_audio, display_duration)
-                        cmd.extend(["-i", silent_audio])
-                        cmd.extend([
-                            "-c:v", "libx264",
-                            "-tune", "stillimage",
-                            "-c:a", "aac",
-                            "-b:a", "192k",
-                            "-pix_fmt", "yuv420p",
-                            "-shortest"
-                        ])
-                    
-                    cmd.append(product_video_path)
-                    subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
-                    
-                    video_segments.append(product_video_path)
-                    
-                    # 2. レビューコメントを3つ表示（順番に）
-                    for i, review in enumerate(reviews[:3]):
-                        if not review:
-                            continue
+                    # 各製品ごとに動画セグメントを作成
+                    for product in shuffled_products:
+                        rank = product['new_rank']
+                        product_name = product['name']
+                        brand_name = product['brand']
+                        reviews = product.get('reviews', [])
                         
-                        # コメント位置決定
-                        positions = ["top", "middle", "bottom"]
-                        comment_position = positions[i % len(positions)]
+                        # 製品名・ブランド名だけのナレーション用テキスト
+                        product_intro_text = f"{rank}位、{brand_name}の{product_name}"
                         
-                        # コメント付きスライド作成
-                        comment_slide = self._create_review_comment_slide(
-                            product, rank, review, comment_position
-                        )
-                        comment_slide_path = os.path.join(temp_dir, f"product_{rank}_comment_{i+1}.png")
-                        comment_slide.save(comment_slide_path)
+                        # 1. 製品画像のみのスライド
+                        product_slide = self._create_product_slide(product, rank)
+                        product_slide_path = os.path.join(temp_dir, f"product_{rank}_slide.png")
+                        product_slide.save(product_slide_path)
                         
-                        # コメントナレーション音声を生成
-                        comment_audio_path = os.path.join(temp_dir, f"product_{rank}_comment_{i+1}_audio.wav")
-                        generate_narration(review, comment_audio_path, "random")
+                        # 製品紹介ナレーション音声を生成
+                        product_audio_path = os.path.join(temp_dir, f"product_{rank}_audio.wav")
                         
-                        # コメントスライドの動画セグメントを作成
-                        comment_video_path = os.path.join(temp_dir, f"product_{rank}_comment_{i+1}_video.mp4")
+                        # 必ず音声を生成するか確認するためのログ
+                        logger.info(f"製品 {rank} の音声生成開始: {product_intro_text}")
+                        success = generate_narration(product_intro_text, product_audio_path, "random")
+                        logger.info(f"製品 {rank} の音声生成結果: {success}, ファイル存在: {os.path.exists(product_audio_path)}")
+                        
+                        # 製品画像の動画セグメントを作成
+                        product_video_path = os.path.join(temp_dir, f"product_{rank}_video.mp4")
                         
                         # ナレーション音声があれば使用、なければ3秒間の無音
-                        if os.path.exists(comment_audio_path):
-                            audio_duration = get_audio_duration(comment_audio_path)
+                        if os.path.exists(product_audio_path) and os.path.getsize(product_audio_path) > 100:
+                            audio_duration = get_audio_duration(product_audio_path)
+                            logger.info(f"製品 {rank} の音声の長さ: {audio_duration}秒")
                             display_duration = max(audio_duration + 0.5, 3.0)  # 少し余裕を持たせる
                         else:
+                            logger.warning(f"製品 {rank} の音声ファイルが存在しないか無効です。無音を使用します。")
                             display_duration = 3.0
+                            product_audio_path = os.path.join(temp_dir, f"silent_{rank}.wav")
+                            create_silent_audio(product_audio_path, display_duration)
                         
-                        # コメントスライドを動画に変換
+                        # 製品スライドを動画に変換
                         cmd = [
                             "ffmpeg", "-y",
                             "-loop", "1",
-                            "-i", comment_slide_path
+                            "-i", product_slide_path,
+                            "-i", product_audio_path,
+                            "-c:v", "libx264",
+                            "-tune", "stillimage",
+                            "-c:a", "aac",
+                            "-b:a", "192k",
+                            "-pix_fmt", "yuv420p",
+                            "-shortest"
                         ]
                         
-                        if os.path.exists(comment_audio_path):
-                            cmd.extend(["-i", comment_audio_path])
-                            cmd.extend([
+                        cmd.append(product_video_path)
+                        try:
+                            result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, text=True)
+                            logger.info(f"製品 {rank} の動画生成成功")
+                        except subprocess.CalledProcessError as e:
+                            logger.error(f"製品 {rank} の動画生成エラー: {e.stderr}")
+                            raise
+                        
+                        video_segments.append(product_video_path)
+                        
+                        # 2. レビューコメントを順番に表示して読み上げる
+                        for i, review in enumerate(reviews[:3]):
+                            if not review:
+                                continue
+                            
+                            # コメント位置決定
+                            positions = ["top", "middle", "bottom"]
+                            comment_position = positions[i % len(positions)]
+                            
+                            # コメント付きスライド作成
+                            comment_slide = self._create_review_comment_slide(
+                                product, rank, review, comment_position
+                            )
+                            comment_slide_path = os.path.join(temp_dir, f"product_{rank}_comment_{i+1}.png")
+                            comment_slide.save(comment_slide_path)
+                            
+                            # コメントナレーション音声を生成
+                            comment_audio_path = os.path.join(temp_dir, f"product_{rank}_comment_{i+1}_audio.wav")
+                            
+                            # 必ず音声を生成するか確認するためのログ
+                            logger.info(f"製品 {rank} のコメント {i+1} の音声生成開始: {review}")
+                            success = generate_narration(review, comment_audio_path, "random")
+                            logger.info(f"製品 {rank} のコメント {i+1} の音声生成結果: {success}, ファイル存在: {os.path.exists(comment_audio_path)}")
+                            
+                            # コメントスライドの動画セグメントを作成
+                            comment_video_path = os.path.join(temp_dir, f"product_{rank}_comment_{i+1}_video.mp4")
+                            
+                            # ナレーション音声があれば使用、なければ3秒間の無音
+                            if os.path.exists(comment_audio_path) and os.path.getsize(comment_audio_path) > 100:
+                                audio_duration = get_audio_duration(comment_audio_path)
+                                logger.info(f"製品 {rank} のコメント {i+1} の音声の長さ: {audio_duration}秒")
+                                display_duration = max(audio_duration + 0.5, 3.0)  # 少し余裕を持たせる
+                            else:
+                                logger.warning(f"製品 {rank} のコメント {i+1} の音声ファイルが存在しないか無効です。無音を使用します。")
+                                display_duration = 3.0
+                                comment_audio_path = os.path.join(temp_dir, f"silent_comment_{rank}_{i+1}.wav")
+                                create_silent_audio(comment_audio_path, display_duration)
+                            
+                            # コメントスライドを動画に変換
+                            cmd = [
+                                "ffmpeg", "-y",
+                                "-loop", "1",
+                                "-i", comment_slide_path,
+                                "-i", comment_audio_path,
                                 "-c:v", "libx264",
                                 "-tune", "stillimage",
                                 "-c:a", "aac",
                                 "-b:a", "192k",
                                 "-pix_fmt", "yuv420p",
                                 "-shortest"
-                            ])
-                        else:
-                            # 無音の場合は固定時間
-                            silent_audio = os.path.join(temp_dir, f"silent_comment_{rank}_{i+1}.wav")
-                            create_silent_audio(silent_audio, display_duration)
-                            cmd.extend(["-i", silent_audio])
-                            cmd.extend([
-                                "-c:v", "libx264",
-                                "-tune", "stillimage",
-                                "-c:a", "aac",
-                                "-b:a", "192k",
-                                "-pix_fmt", "yuv420p",
-                                "-shortest"
-                            ])
-                        
-                        cmd.append(comment_video_path)
-                        subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
-                        
-                        video_segments.append(comment_video_path)
-                
-                # すべての動画セグメントを連結
-                concat_file = os.path.join(temp_dir, "concat.txt")
-                with open(concat_file, "w") as f:
-                    for segment in video_segments:
-                        f.write(f"file '{segment}'\n")
-                
-                # 最終動画を作成
-                cmd = [
-                    "ffmpeg", "-y",
-                    "-f", "concat",
-                    "-safe", "0",
-                    "-i", concat_file,
-                    "-c", "copy",
-                    output_path
-                ]
-                subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
-                
-                logger.info(f"動画作成完了: {output_path}")
-                return output_path
-                
-        except Exception as e:
-            logger.error(f"動画作成エラー: {str(e)}")
-            import traceback
-            logger.error(traceback.format_exc())
-            raise
+                            ]
+                            
+                            cmd.append(comment_video_path)
+                            try:
+                                result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, text=True)
+                                logger.info(f"製品 {rank} のコメント {i+1} の動画生成成功")
+                            except subprocess.CalledProcessError as e:
+                                logger.error(f"製品 {rank} のコメント {i+1} の動画生成エラー: {e.stderr}")
+                                raise
+                            
+                            video_segments.append(comment_video_path)
+                    
+                    # すべての動画セグメントを連結
+                    concat_file = os.path.join(temp_dir, "concat.txt")
+                    with open(concat_file, "w") as f:
+                        for segment in video_segments:
+                            f.write(f"file '{segment}'\n")
+                    
+                    # 最終動画を作成
+                    cmd = [
+                        "ffmpeg", "-y",
+                        "-f", "concat",
+                        "-safe", "0",
+                        "-i", concat_file,
+                        "-c", "copy",
+                        output_path
+                    ]
+                    
+                    try:
+                        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, text=True)
+                        logger.info(f"最終動画の作成成功: {output_path}")
+                    except subprocess.CalledProcessError as e:
+                        logger.error(f"最終動画の作成エラー: {e.stderr}")
+                        raise
+                    
+                    logger.info(f"動画作成完了: {output_path}")
+                    return output_path
+                    
+            except Exception as e:
+                logger.error(f"動画作成エラー: {str(e)}")
+                import traceback
+                logger.error(traceback.format_exc())
+                raise
