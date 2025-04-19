@@ -39,7 +39,6 @@ assets/videos/
 assets/thumbnails/
 temp/
 output/
-db/
 
 # 認証情報
 config/__pycache__/
@@ -49,6 +48,7 @@ config/__pycache__/
 
 # データベース
 *.db
+*.sql
 *.sqlite
 *.sqlite3
 
