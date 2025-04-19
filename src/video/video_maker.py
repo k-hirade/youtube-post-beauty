@@ -11,14 +11,15 @@ from typing import Dict, List, Optional, Any, Tuple
 from datetime import datetime
 
 # 動画編集ライブラリ
-from moviepy.editor import (
+from moviepy import (
     TextClip, ImageClip, AudioFileClip, CompositeVideoClip,
-    concatenate_videoclips, concatenate_audioclips,
-    ColorClip, VideoFileClip
+    concatenate_videoclips, ColorClip, VideoFileClip
 )
 
 from moviepy.video.tools.subtitles import SubtitlesClip
 from PIL import Image, ImageDraw, ImageFont
+
+from moviepy.video.VideoClip import VideoClip
 
 # ロガー設定
 logger = logging.getLogger(__name__)

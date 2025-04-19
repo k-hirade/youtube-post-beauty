@@ -11,6 +11,8 @@ import argparse
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 # 内部モジュールのインポート
 from src.scraper.cosme_scraper import CosmeNetScraper
 from src.selector.product_selector import ProductSelector
@@ -52,8 +54,8 @@ def parse_args():
     """コマンドライン引数のパース"""
     parser = argparse.ArgumentParser(description='アットコスメランキングからショート動画を自動生成')
     
-    parser.add_argument('--channel', type=str, default='ドラッグストア',
-                        choices=['ドラッグストア', 'スーパー'],
+    parser.add_argument('--channel', type=str, default='スーパー・ドラッグストア',
+                        choices=['スーパー・ドラッグストア'],
                         help='購入場所チャンネル')
     
     parser.add_argument('--genre', type=str, default='化粧水',
@@ -243,3 +245,12 @@ def main():
     
     # 終了コード設定
     sys.exit(0 if success else 1)
+
+if __name__ == "__main__":
+    print("Script starting...")
+    try:
+        main()
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        import traceback
+        traceback.print_exc()

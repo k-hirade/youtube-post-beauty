@@ -20,7 +20,7 @@ class CosmeNetScraper:
     """アットコスメのランキングページをスクレイピングするクラス"""
     
     BASE_URL = "https://www.cosme.net"
-    RANKING_URL = "https://www.cosme.net/categories/pchannel/2/ranking/"
+    RANKING_BASE_URL = "https://www.cosme.net/categories/pchannel/2/ranking/"
     
     # カテゴリーID対応表（例示、必要に応じて拡充）
     CATEGORY_MAP = {
@@ -30,10 +30,9 @@ class CosmeNetScraper:
         "パック": ["1007"]                    # シートマスク・パック
     }
     
-    # 購入場所チャンネル (仮定: スーパー=1, ドラッグストア=2)
     CHANNEL_MAP = {
-        "スーパー": "1",
-        "ドラッグストア": "2"
+        "ドラッグストア": "2",
+        "スーパー": "2",  # スーパーもドラッグストアと同じPチャンネルを利用
     }
     
     def __init__(self, rate_limit: float = 1.0):
@@ -70,6 +69,7 @@ class CosmeNetScraper:
         """
         self._respect_rate_limit()
         try:
+            logger.info(f"URLを取得中: {url}")
             response = self.session.get(url)
             response.raise_for_status()
             return response.text
@@ -89,6 +89,8 @@ class CosmeNetScraper:
         """
         products = []
         items = soup.select("div.keyword-ranking-item")
+        
+        logger.info(f"ページから{len(items)}個の製品要素を検出")
         
         for item in items:
             try:
@@ -155,6 +157,7 @@ class CosmeNetScraper:
                 }
                 
                 products.append(product_data)
+                logger.debug(f"製品情報抽出: {product_name} (ID: {product_id})")
                 
             except Exception as e:
                 logger.warning(f"製品情報抽出エラー: {str(e)}")
@@ -164,9 +167,10 @@ class CosmeNetScraper:
     
     def get_ranking_products(
         self, 
-        channel: str = "ドラッグストア", 
-        genre: str = "化粧水",
-        weeks_back: int = 0
+        channel: str,
+        genre: str,
+        week: int = 0,
+        page: int = 1
     ) -> List[Dict[str, Any]]:
         """
         指定されたチャンネルとジャンルのランキング製品を取得
@@ -174,13 +178,17 @@ class CosmeNetScraper:
         Args:
             channel: 購入場所チャンネル名
             genre: ジャンル名
-            weeks_back: 何週前のランキングか（0=今週）
+            week: 何週前のランキングか（0=今週、1=先週、...）
+            page: ページ番号
         
         Returns:
             製品情報の辞書リスト
         """
-        # TODO: 週を遡るロジックを実装する（現在は簡略化し今週のみ）
-        url = self.RANKING_URL
+        # ランキングURL構築
+        if week == 0:
+            url = f"{self.RANKING_BASE_URL}?page={page}"
+        else:
+            url = f"{self.RANKING_BASE_URL}week{week}/?page={page}"
         
         # 対象ページを取得
         html = self.get_page(url)
@@ -190,24 +198,27 @@ class CosmeNetScraper:
         products = self._parse_product_items(soup)
         
         # 指定ジャンルの製品をフィルタリング
-        category_ids = self.CATEGORY_MAP.get(genre, [])
         filtered_products = []
         
         for product in products:
-            # カテゴリチェック (今はカテゴリ名でマッチング、将来的にはIDでの照合に変更予定)
+            # カテゴリチェック (カテゴリ名でマッチング)
             category_match = False
+            if not product["categories"]:
+                continue
+                
             for cat in product["categories"]:
                 if genre in cat:
                     category_match = True
                     break
             
             if category_match:
-                # チャンネル情報はここではまだ取得できないため、別途取得か付与する必要あり
-                # 現状では仮の値をセット
+                # チャンネル情報追加
                 product["channel"] = channel
                 product["genre"] = genre
                 filtered_products.append(product)
+                logger.debug(f"該当製品: {product['name']} ({product['brand']})")
         
+        logger.info(f"{url} から {len(filtered_products)}/{len(products)} 個の製品を抽出")
         return filtered_products
     
     def get_products_by_criteria(
@@ -230,20 +241,49 @@ class CosmeNetScraper:
             製品情報リスト
         """
         collected_products = []
+        existing_ids = set()
         
-        # 週ごとに製品を収集
-        for week in range(max_weeks_back + 1):
-            products = self.get_ranking_products(channel, genre, week)
-            
-            # 重複を避けるために製品IDでフィルタリング
-            existing_ids = {p["product_id"] for p in collected_products}
-            new_products = [p for p in products if p["product_id"] not in existing_ids]
-            
-            collected_products.extend(new_products)
-            
-            # 十分な製品が集まったらループを終了
+        # まず現在の週の複数ページをチェック
+        for page in range(1, 6):  # page=1からpage=5まで
             if len(collected_products) >= min_count:
                 break
+                
+            products = self.get_ranking_products(channel, genre, week=0, page=page)
+            
+            # 重複を避けるためにフィルタリング
+            new_products = [p for p in products if p["product_id"] not in existing_ids]
+            
+            # 既存IDセットを更新
+            existing_ids.update([p["product_id"] for p in new_products])
+            
+            collected_products.extend(new_products)
+            logger.info(f"現在の週 ページ{page}: {len(new_products)}個追加、合計{len(collected_products)}個")
+            
+            # 次ページをチェックする前に少し待機
+            time.sleep(self.rate_limit)
+        
+        # それでも足りない場合、過去の週のデータを取得
+        for week in range(2, max_weeks_back + 1):  # week2, week3, ...
+            if len(collected_products) >= min_count:
+                break
+                
+            for page in range(1, 3):  # 各週は最初の2ページだけチェック
+                products = self.get_ranking_products(channel, genre, week=week, page=page)
+                
+                # 重複を避けるためにフィルタリング
+                new_products = [p for p in products if p["product_id"] not in existing_ids]
+                
+                # 既存IDセットを更新
+                existing_ids.update([p["product_id"] for p in new_products])
+                
+                collected_products.extend(new_products)
+                logger.info(f"週{week} ページ{page}: {len(new_products)}個追加、合計{len(collected_products)}個")
+                
+                if len(collected_products) >= min_count:
+                    break
+                
+                # 次ページをチェックする前に少し待機
+                time.sleep(self.rate_limit)
         
         # 最低要件を満たさない場合
         if len(collected_products) < min_count:
@@ -251,5 +291,10 @@ class CosmeNetScraper:
                 f"必要な製品数（{min_count}個）を収集できませんでした。"
                 f"現在: {len(collected_products)}個"
             )
+            
+            # 一応ログにどんな製品が取れたか記録
+            if collected_products:
+                product_names = [f"{p['brand']} {p['name']}" for p in collected_products]
+                logger.info(f"収集された製品: {', '.join(product_names)}")
         
-        return collected_products[:min_count] if len(collected_products) >= min_count else collected_products
+        return collected_products
