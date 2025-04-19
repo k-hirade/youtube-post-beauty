@@ -11,7 +11,7 @@ from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta
 
 # OpenAI APIクライアント
-import openai
+from openai import OpenAI
 
 # ロガー設定
 logger = logging.getLogger(__name__)
@@ -22,8 +22,7 @@ class ReviewGenerator:
     def __init__(
         self, 
         api_key: Optional[str] = None,
-        model: str = "gpt-3.5-turbo",
-        temperature: float = 0.8,
+        model: str = "gpt-4o",
         max_retries: int = 3,
         retry_delay: float = 1.0
     ):
@@ -42,36 +41,21 @@ class ReviewGenerator:
             raise ValueError("OpenAI APIキーが設定されていません")
         
         self.model = model
-        self.temperature = temperature
         self.max_retries = max_retries
         self.retry_delay = retry_delay
         
         # APIクライアント設定
-        openai.api_key = self.api_key
-    
-    def _get_system_prompt(self) -> str:
-        """システムプロンプトを生成"""
-        return """
-あなたは美容製品に関する短い感想を生成する専門家です。
-以下のフォーマットとルールに従って感想を作成してください：
-
-- 20文字以内の短い感想を3つ作成してください
-- 表現はバラエティに富んだものにしてください
-- 若い女性が使用した感想として書いてください
-- 肌への効果や使用感を具体的に表現してください
-- 自然な表現を使ってください（SNSで友達に伝えるような感じで）
-- 絵文字は使わないでください
-"""
+        self.client = OpenAI(api_key=self.api_key)
     
     def _get_user_prompt(self, product: Dict[str, Any]) -> str:
         """ユーザープロンプトを生成"""
         return f"""
-「{product['brand']}」の「{product['name']}」についての感想を3つ作成してください。
-ジャンル: {product['genre']}
+        「{product['brand']}」の「{product['name']}」についての感想を3つ作成してください。
+        ジャンル: {product['genre']}
 
-各感想は必ず20文字以内にしてください。
-出力は3行でそれぞれの感想だけをシンプルに書いてください。
-"""
+        各感想は必ず20文字以内にしてください。
+        出力は3行でそれぞれの感想だけをシンプルに書いてください。
+        """
     
     def _parse_response(self, response_text: str) -> List[str]:
         """APIレスポンスから感想を抽出"""
@@ -96,18 +80,13 @@ class ReviewGenerator:
         
         for attempt in range(self.max_retries):
             try:
-                system_prompt = self._get_system_prompt()
                 user_prompt = self._get_user_prompt(product)
                 
-                response = openai.ChatCompletion.create(
+                response = self.client.chat.completions.create(
                     model=self.model,
                     messages=[
-                        {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_prompt}
                     ],
-                    temperature=self.temperature,
-                    max_tokens=150,
-                    n=1
                 )
                 
                 response_text = response.choices[0].message.content

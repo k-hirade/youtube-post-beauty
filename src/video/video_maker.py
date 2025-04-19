@@ -79,11 +79,9 @@ class VideoMaker:
             # デフォルトフォントの設定（OSによって異なる）
             import platform
             system = platform.system()
-            
-            if system == 'Windows':
-                self.font_path = 'C:\\Windows\\Fonts\\meiryo.ttc'
-            elif system == 'Darwin':  # macOS
-                self.font_path = '/System/Library/Fonts/ヒラギノ角ゴシック W6.ttc'
+
+            if system == 'Darwin':  # macOS
+                self.font_path = '/usr/share/fonts/opentype/noto/NotoSansCJKjp-Bold.otf'
             else:  # Linux
                 self.font_path = '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
         
