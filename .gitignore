@@ -48,7 +48,6 @@ config/__pycache__/
 
 # データベース
 *.db
-*.sql
 *.sqlite
 *.sqlite3
 
