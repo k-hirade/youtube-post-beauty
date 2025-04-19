@@ -1,0 +1,72 @@
+# Python 仮想環境
+youtube-post-beauty-311/
+env/
+ENV/
+.env
+.venv/
+.python-version
+
+# Python キャッシュファイル
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+.egg-info/
+.installed.cfg
+*.egg
+**/__pycache__/
+
+# ログファイル
+logs/
+*.log
+
+# 生成されるメディアファイル
+assets/videos/
+assets/thumbnails/
+temp/
+output/
+db/
+
+# 認証情報
+config/__pycache__/
+*.json
+!package.json
+*.pickle
+
+# データベース
+*.db
+*.sqlite
+*.sqlite3
+
+# OS 固有のファイル
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# エディタ/IDE 固有のファイル
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.settings/
+.classpath
+
+# 一時ファイル
+*.tmp
+*.bak
+*.backup
+tmp/
+temp/
