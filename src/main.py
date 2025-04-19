@@ -175,7 +175,6 @@ def run_pipeline(args):
         output_video = video_maker.create_video(
             products=selected_with_reviews,
             title=f"{args.channel}で買える{args.genre}ランキング",
-            subtitle="プチプラだけどすごい効果！"
         )
 
         # 9. GCS へアップロード
