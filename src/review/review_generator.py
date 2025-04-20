@@ -26,7 +26,7 @@ class ReviewGenerator:
         api_key: Optional[str] = None,
         model: str = "gpt-4o",
         max_retries: int = 3,
-        retry_delay: float = 1.0
+        retry_delay: float = 3.0
     ):
         """
         初期化
@@ -103,7 +103,7 @@ class ReviewGenerator:
         
         {reviews_text}
         
-        各要点は必ず20文字以内で、単純明快に表現してください。
+        各要点は必ず30文字以内で、単純明快に表現してください。
         出力は3行でそれぞれの要点だけをシンプルに書いてください。余計な説明は不要です。
         """
     
@@ -114,7 +114,7 @@ class ReviewGenerator:
         ジャンル: {product['genre']}
         
         一般的な{product['genre']}製品の口コミの傾向を踏まえて、現実的で説得力のある要点を考えてください。
-        各感想は必ず20文字以内にしてください。
+        各感想は必ず30文字以内にしてください。
         出力は3行でそれぞれの感想だけをシンプルに書いてください。
         """
     
@@ -162,14 +162,14 @@ class ReviewGenerator:
                 response_text = response.choices[0].message.content
                 summaries = self._parse_response(response_text)
                 
-                # バリデーション：20文字以内か確認
+                # バリデーション：30文字以内か確認
                 valid_summaries = []
                 for summary in summaries:
                     if len(summary) <= 40:
                         valid_summaries.append(summary)
                     else:
                         # 長すぎる場合は切り詰め
-                        valid_summaries.append(summary[:20])
+                        valid_summaries.append(summary[:40])
                 
                 logger.info(f"レビュー生成成功: {valid_summaries}")
                 return valid_summaries[:3]  # 必ず3つだけ返す
