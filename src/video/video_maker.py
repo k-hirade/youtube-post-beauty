@@ -1115,7 +1115,7 @@ class VideoMaker:
                                 y_pos = int(self.VIDEO_HEIGHT * 0.75)
                             
                             # コメント描画（長い場合は折り返し）
-                            max_width = int(self.VIDEO_WIDTH * 0.8)
+                            max_width = int(self.VIDEO_WIDTH * 0.7)
                             if comment_width > max_width:
                                 # 折り返し処理
                                 words = list(comment_text)
