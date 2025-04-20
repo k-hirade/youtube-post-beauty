@@ -32,7 +32,6 @@ def check_voicevox_available():
     try:
         response = requests.get(f"{VOICEVOX_ENGINE_URL}/version", timeout=5)
         if response.status_code == 200:
-            logger.info(f"VOICEVOXエンジンが利用可能です: {response.text}")
             return True
         else:
             logger.warning(f"VOICEVOXエンジンの応答が不正です: {response.status_code}")
@@ -107,14 +106,12 @@ def generate_narration(text: str, output_path: str, voice_type: str = "default")
         
         # VOICEVOXが利用可能かチェック
         voicevox_available = check_voicevox_available()
-        logger.info(f"VOICEVOXエンジンの利用可能状態: {voicevox_available}")
         
         if voicevox_available:
             result = generate_with_voicevox(processed_text, output_path, voice_type)
             
             # 成功したかファイルの存在を確認
             if os.path.exists(output_path) and os.path.getsize(output_path) > 100:
-                logger.info(f"音声生成成功: {output_path}, サイズ={os.path.getsize(output_path)}バイト")
                 return True
             else:
                 logger.warning(f"VOICEVOXでの音声生成が失敗または無効なファイルです: {output_path}")
@@ -184,7 +181,6 @@ def create_silent_audio(output_path: str, duration: float = 1.0) -> bool:
                     wf.setnframes(frames)
                     wf.writeframes(struct.pack('<' + 'h' * frames * 2, *([0] * frames * 2)))
                 
-                logger.info(f"Python wave モジュールで無音ファイルを作成: {output_path}")
                 return os.path.exists(output_path)
             except Exception as e:
                 logger.error(f"代替無音ファイル作成エラー: {e}")
@@ -194,7 +190,6 @@ def create_silent_audio(output_path: str, duration: float = 1.0) -> bool:
         if os.path.exists(output_path):
             # ファイルサイズの確認
             file_size = os.path.getsize(output_path)
-            logger.info(f"無音ファイル作成成功: {output_path}, サイズ={file_size}バイト")
             
             # ファイルが適切なサイズであることを確認
             if file_size < 100:  # 極端に小さなファイル
@@ -262,7 +257,6 @@ def generate_with_voicevox(text: str, output_path: str, voice_type: str) -> bool
             
         character_id = char_info["id"]
         character_name = char_info["name"]
-        logger.info(f"選択したVOICEVOXキャラクター: {character_name} (ID: {character_id})")
         
         # テキストから音声合成用クエリを生成
         try:
@@ -270,7 +264,6 @@ def generate_with_voicevox(text: str, output_path: str, voice_type: str) -> bool
             if len(text) > 1000:
                 text = text[:997] + "..."
             
-            logger.info(f"VOICEVOX APIリクエスト開始: audio_query, text='{text}', speaker={character_id}")
             response = requests.post(
                 f"{VOICEVOX_ENGINE_URL}/audio_query",
                 params={"text": text, "speaker": character_id},
@@ -281,7 +274,6 @@ def generate_with_voicevox(text: str, output_path: str, voice_type: str) -> bool
                 logger.error(f"VOICEVOX クエリ生成失敗: ステータスコード={response.status_code}, 応答={response.text}")
                 return False
             
-            logger.info("VOICEVOX クエリ生成成功")
             query_json = response.json()
             query_json["volumeScale"] = 2.8  # 音量調整
             
@@ -297,9 +289,7 @@ def generate_with_voicevox(text: str, output_path: str, voice_type: str) -> bool
             if response.status_code != 200:
                 logger.error(f"VOICEVOX 音声合成失敗: ステータスコード={response.status_code}, 応答={response.text}")
                 return False
-            
-            logger.info(f"VOICEVOX 音声合成成功: コンテンツサイズ={len(response.content)}バイト")
-            
+                        
             # 音声ファイルを保存
             with open(output_path, "wb") as f:
                 f.write(response.content)
