@@ -5,6 +5,7 @@
 
 import time
 import logging
+import os
 import re
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple, Any
@@ -373,6 +374,69 @@ class CosmeNetScraper:
         
         logger.info(f"{url} から {len(filtered_products)}/{len(products)} 個の製品を抽出")
         return filtered_products
+    
+    def download_product_images(self, products: List[Dict[str, Any]], output_dir: str) -> List[Dict[str, Any]]:
+        """
+        製品画像をダウンロードする
+        
+        Args:
+            products: 製品情報のリスト
+            output_dir: 画像の保存先ディレクトリ
+            
+        Returns:
+            更新された製品情報のリスト
+        """
+        # 出力ディレクトリが存在することを確認
+        os.makedirs(output_dir, exist_ok=True)
+        
+        updated_products = []
+        
+        for product in products:
+            product_id = product.get("product_id")
+            image_url = product.get("image_url")
+            
+            if not product_id or not image_url:
+                logger.warning(f"製品IDまたは画像URLが不足しています: {product}")
+                updated_products.append(product)
+                continue
+            
+            # 画像の保存先パス
+            img_path = os.path.join(output_dir, f"{product_id}.jpg")
+            
+            # 既に画像が存在する場合はスキップ
+            if os.path.exists(img_path):
+                logger.info(f"画像は既に存在します: {img_path}")
+                # 保存先のパスを製品情報に追加
+                product["local_image_path"] = img_path
+                updated_products.append(product)
+                continue
+            
+            # 画像のダウンロード
+            try:
+                logger.info(f"画像ダウンロード中: {image_url} -> {img_path}")
+                self._respect_rate_limit()  # レート制限を遵守
+                
+                # リクエスト送信
+                response = self.session.get(image_url, stream=True, timeout=30)
+                response.raise_for_status()
+                
+                # 画像を保存
+                with open(img_path, 'wb') as f:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        f.write(chunk)
+                
+                logger.info(f"画像ダウンロード成功: {img_path}")
+                
+                # 保存先のパスを製品情報に追加
+                product["local_image_path"] = img_path
+                
+            except Exception as e:
+                logger.error(f"画像ダウンロードエラー ({image_url}): {str(e)}")
+                # エラーがあっても処理を続行
+            
+            updated_products.append(product)
+        
+        return updated_products
         
     def get_products_by_criteria(
         self, 

@@ -255,343 +255,338 @@ class VideoMaker:
         return img.resize((width, height), Image.LANCZOS)
     
     def _create_product_slide(
-            self,
-            product: Dict[str, Any],
-            rank: int
-        ) -> Image.Image:
-            """
-            製品スライドの作成（画像と商品名のみ表示）
-            
-            Args:
-                product: 製品情報
-                rank: 順位
-            
-            Returns:
-                Image.Image: 製品スライド画像
-            """
-            # 背景画像を作成
-            img = Image.new('RGB', (self.VIDEO_WIDTH, self.VIDEO_HEIGHT), self.BG_COLOR)
-            draw = ImageDraw.Draw(img)
-            
-            # 画像が存在する場合
-            if 'image_url' in product and product['image_url']:
+        self,
+        product: Dict[str, Any],
+        rank: int
+    ) -> Image.Image:
+        """
+        製品スライドの作成（画像と商品名のみ表示）
+        
+        Args:
+            product: 製品情報
+            rank: 順位
+        
+        Returns:
+            Image.Image: 製品スライド画像
+        """
+        # 背景画像を作成
+        img = Image.new('RGB', (self.VIDEO_WIDTH, self.VIDEO_HEIGHT), self.BG_COLOR)
+        draw = ImageDraw.Draw(img)
+        
+        # 画像読み込みの準備
+        img_loaded = False
+        product_img = None
+        
+        # 1. ローカルに保存された画像パスを確認（スクレイパーからダウンロード済み）
+        if 'local_image_path' in product and product['local_image_path']:
+            local_path = product['local_image_path']
+            if os.path.exists(local_path):
                 try:
-                    # 画像を一時保存（既に保存済みならその画像を使用）
-                    img_path = os.path.join(self.temp_dir, f"{product['product_id']}.jpg")
-                    
-                    # 画像がなければダミー画像を使用
-                    if not os.path.exists(img_path):
-                        img_path = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'assets', 'dummy_product.jpg')
-                        
-                        if not os.path.exists(img_path):
-                            # ダミー画像もなければ作成
-                            self._create_dummy_image(img_path, product['name'])
-                    
-                    # 画像読み込み
-                    product_img = Image.open(img_path)
-                    
-                    # リサイズ（アスペクト比保持、最大サイズ調整）
-                    img_width, img_height = product_img.size
-                    aspect_ratio = img_width / img_height
-                    
-                    # 画面の40%を最大高さとする
-                    max_height = int(self.VIDEO_HEIGHT * 0.4)
-                    new_height = min(max_height, img_height)
-                    new_width = int(new_height * aspect_ratio)
-                    
-                    if new_width > self.VIDEO_WIDTH * 0.8:
-                        new_width = int(self.VIDEO_WIDTH * 0.8)
-                        new_height = int(new_width / aspect_ratio)
-                    
-                    product_img = product_img.resize((new_width, new_height), Image.LANCZOS)
-                    
-                    # 画像を上部（画面の35%位置）に配置して、画像と下部のテキストの間が画面中央になるようにする
-                    img_x = (self.VIDEO_WIDTH - new_width) // 2
-                    img_y = int(self.VIDEO_HEIGHT * 0.35) - (new_height // 2)
-                    
-                    # 画像貼り付け
-                    img.paste(product_img, (img_x, img_y))
-                    
-                    # 商品名を画像の下に表示
-                    product_name = product['name']
-                    brand_name = product['brand']
-                    name_font = self.get_font(self.TITLE_FONT_SIZE, self.noto_sans_jp_bold_path)
-                    brand_font = self.get_font(self.BRAND_FONT_SIZE, self.noto_sans_jp_path)
-                    
-                    # 商品名の表示位置（中央に配置）
-                    name_y = int(self.VIDEO_HEIGHT * 0.5)  # 画面の中央
-                    
-                    # 商品名を中央揃えで表示
-                    name_width = self.calculate_text_width(product_name, name_font, draw)
-                    name_x = (self.VIDEO_WIDTH - name_width) // 2
-                    
-                    # 商品名を表示（白色で縁取り）
-                    self.apply_text_outline(
-                        draw=draw,
-                        text=product_name,
-                        x=name_x,
-                        y=name_y,
-                        font=name_font,
-                        text_color=self.TITLE_COLOR,
-                        outline_color=self.SHADOW_COLOR,
-                        outline_width=2
-                    )
-                    
-                    # ブランド名の表示位置（商品名の下）
-                    brand_y = name_y + self.TITLE_FONT_SIZE + 10
-                    
-                    # ブランド名を中央揃えで表示
-                    brand_width = self.calculate_text_width(brand_name, brand_font, draw)
-                    brand_x = (self.VIDEO_WIDTH - brand_width) // 2
-                    
-                    # ブランド名を表示（グレーで）
-                    draw.text(
-                        (brand_x, brand_y),
-                        brand_name,
-                        font=brand_font,
-                        fill=(200, 200, 200)  # ライトグレー
-                    )
-                    
+                    logger.info(f"ローカル画像を読み込み中: {local_path}")
+                    product_img = Image.open(local_path)
+                    img_loaded = True
                 except Exception as e:
-                    logger.error(f"画像読み込みエラー: {str(e)}")
+                    logger.error(f"ローカル画像読み込みエラー: {local_path} - {str(e)}")
+                    img_loaded = False
+        
+        # 2. 製品IDから一時ディレクトリの画像を確認
+        if not img_loaded and 'product_id' in product:
+            img_path = os.path.join(self.temp_dir, f"{product['product_id']}.jpg")
+            if os.path.exists(img_path):
+                try:
+                    logger.info(f"一時ディレクトリの画像を読み込み中: {img_path}")
+                    product_img = Image.open(img_path)
+                    img_loaded = True
+                except Exception as e:
+                    logger.error(f"一時ディレクトリの画像読み込みエラー: {img_path} - {str(e)}")
+                    img_loaded = False
+        
+        # 3. image_urlから直接ダウンロード（最終手段）
+        if not img_loaded and 'image_url' in product and product['image_url']:
+            image_url = product['image_url']
+            try:
+                logger.info(f"画像をURLから直接ダウンロード中: {image_url}")
+                # 一時保存先
+                img_path = os.path.join(self.temp_dir, f"{product['product_id']}.jpg")
+                os.makedirs(os.path.dirname(img_path), exist_ok=True)
+                
+                # リクエスト送信（シンプルな実装）
+                import requests
+                response = requests.get(image_url, timeout=30)
+                response.raise_for_status()
+                
+                # 画像を保存
+                with open(img_path, 'wb') as f:
+                    f.write(response.content)
+                    
+                # 保存した画像を読み込み
+                product_img = Image.open(img_path)
+                img_loaded = True
+                logger.info(f"画像を直接ダウンロードして保存: {img_path}")
+            except Exception as e:
+                logger.error(f"画像ダウンロードエラー: {str(e)}")
+                img_loaded = False
+        
+        # 4. ダミー画像を使用
+        if not img_loaded:
+            try:
+                # まずプロジェクトのダミー画像を試す
+                dummy_path = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'assets', 'dummy_product.jpg')
+                
+                # ダミー画像がなければ作成
+                if not os.path.exists(dummy_path):
+                    logger.info(f"ダミー画像を作成: {dummy_path}")
+                    self._create_dummy_image(dummy_path, product.get('name', 'No Image'))
+                
+                product_img = Image.open(dummy_path)
+                img_loaded = True
+                logger.info(f"ダミー画像を使用: {dummy_path}")
+            except Exception as e:
+                logger.error(f"ダミー画像読み込みエラー: {str(e)}")
+                # ここでは何もせず、下でメモリ上にダミー画像を作成
+        
+        # 5. どの方法でも失敗した場合、メモリ上にダミー画像を作成
+        if not img_loaded or product_img is None:
+            logger.warning("すべての画像取得方法が失敗したため、メモリ上にダミー画像を作成します")
+            width, height = 800, 800
+            product_img = Image.new('RGB', (width, height), color=(200, 200, 200))
+            draw_dummy = ImageDraw.Draw(product_img)
             
-            # フォント設定
-            rank_font = self.get_font(self.TITLE_FONT_SIZE * 1.3, self.noto_sans_jp_bold_path)
+            # テキストを描画
+            dummy_text = product.get('name', 'No Image')
+            try:
+                font = self.get_font(60, self.noto_sans_jp_path)
+            except Exception:
+                font = ImageFont.load_default()
             
-            # 順位表示
-            rank_text = f"{rank}位"
+            text_width = self.calculate_text_width(dummy_text, font, draw_dummy)
+            text_height = int(60 * 1.2)  # 概算
+            position = ((width - text_width) // 2, (height - text_height) // 2)
+            draw_dummy.text(position, dummy_text, fill=(100, 100, 100), font=font)
+        
+        # 画像のリサイズと配置
+        try:
+            # リサイズ（アスペクト比保持、最大サイズ調整）
+            img_width, img_height = product_img.size
+            aspect_ratio = img_width / img_height
+            
+            # 画面の40%を最大高さとする
+            max_height = int(self.VIDEO_HEIGHT * 0.4)
+            new_height = min(max_height, img_height)
+            new_width = int(new_height * aspect_ratio)
+            
+            if new_width > self.VIDEO_WIDTH * 0.8:
+                new_width = int(self.VIDEO_WIDTH * 0.8)
+                new_height = int(new_width / aspect_ratio)
+            
+            product_img = product_img.resize((new_width, new_height), Image.LANCZOS)
+            
+            # 画像を上部（画面の35%位置）に配置して、画像と下部のテキストの間が画面中央になるようにする
+            img_x = (self.VIDEO_WIDTH - new_width) // 2
+            img_y = int(self.VIDEO_HEIGHT * 0.35) - (new_height // 2)
+            
+            # 画像貼り付け
+            img.paste(product_img, (img_x, img_y))
+            
+            # 商品名を画像の下に表示
+            product_name = product.get('name', 'No Name')
+            brand_name = product.get('brand', 'No Brand')
+            name_font = self.get_font(self.TITLE_FONT_SIZE, self.noto_sans_jp_bold_path)
+            brand_font = self.get_font(self.BRAND_FONT_SIZE, self.noto_sans_jp_path)
+            
+            # 商品名の表示位置（中央に配置）
+            name_y = int(self.VIDEO_HEIGHT * 0.5)  # 画面の中央
+            
+            # 商品名を中央揃えで表示
+            name_width = self.calculate_text_width(product_name, name_font, draw)
+            name_x = (self.VIDEO_WIDTH - name_width) // 2
+            
+            # 商品名を表示（白色で縁取り）
             self.apply_text_outline(
                 draw=draw,
-                text=rank_text,
-                x=50,
-                y=50,
-                font=rank_font,
-                text_color=self.RANK_COLOR,
+                text=product_name,
+                x=name_x,
+                y=name_y,
+                font=name_font,
+                text_color=self.TITLE_COLOR,
                 outline_color=self.SHADOW_COLOR,
                 outline_width=2
             )
             
-            return img
+            # ブランド名の表示位置（商品名の下）
+            brand_y = name_y + self.TITLE_FONT_SIZE + 10
+            
+            # ブランド名を中央揃えで表示
+            brand_width = self.calculate_text_width(brand_name, brand_font, draw)
+            brand_x = (self.VIDEO_WIDTH - brand_width) // 2
+            
+            # ブランド名を表示（グレーで）
+            draw.text(
+                (brand_x, brand_y),
+                brand_name,
+                font=brand_font,
+                fill=(200, 200, 200)  # ライトグレー
+            )
+        except Exception as e:
+            logger.error(f"画像処理エラー: {str(e)}")
+        
+        # フォント設定
+        rank_font = self.get_font(self.TITLE_FONT_SIZE * 1.3, self.noto_sans_jp_bold_path)
+        
+        # 順位表示
+        rank_text = f"{rank}位"
+        self.apply_text_outline(
+            draw=draw,
+            text=rank_text,
+            x=50,
+            y=50,
+            font=rank_font,
+            text_color=self.RANK_COLOR,
+            outline_color=self.SHADOW_COLOR,
+            outline_width=2
+        )
+        
+        return img
 
     def _create_review_comment_slide(
-            self,
-            product: Dict[str, Any],
-            rank: int,
-            comment: str,
-            comment_position: str = "top",  # "top", "middle", "bottom"
-            comment_index: int = 0  # 0, 1, 2 (コメントのインデックス)
-        ) -> Image.Image:
-            """
-            レビューコメント付きの製品スライドを作成
+        self,
+        product: Dict[str, Any],
+        rank: int,
+        comment: str,
+        comment_position: str = "top",  # "top", "middle", "bottom"
+        comment_index: int = 0  # 0, 1, 2 (コメントのインデックス)
+    ) -> Image.Image:
+        """
+        レビューコメント付きの製品スライドを作成
+        
+        Args:
+            product: 製品情報
+            rank: 順位
+            comment: コメントテキスト
+            comment_position: コメントの位置
+            comment_index: コメントのインデックス（色分け用）
             
-            Args:
-                product: 製品情報
-                rank: 順位
-                comment: コメントテキスト
-                comment_position: コメントの位置
-                comment_index: コメントのインデックス（色分け用）
+        Returns:
+            Image.Image: レビューコメント付き製品スライド
+        """
+        # 製品スライドを基本として作成し、その上にコメントを追加する
+        img = self._create_product_slide(product, rank)
+        draw = ImageDraw.Draw(img)
+        
+        # フォント設定
+        comment_font = self.get_font(self.REVIEW_FONT_SIZE, self.noto_sans_jp_path)
+        
+        # コメントを四角で囲んで表示
+        comment_text = f"「{comment}」"
+        comment_width = self.calculate_text_width(comment_text, comment_font, draw)
+        
+        # コメントインデックスに応じて色を設定
+        if comment_index == 0:
+            border_color = (255, 50, 50)  # 赤色
+        elif comment_index == 1:
+            border_color = (50, 255, 50)  # 緑色
+        else:
+            border_color = (50, 50, 255)  # 青色
+        
+        # コメントが長い場合は折り返し
+        max_width = int(self.VIDEO_WIDTH * 0.8)
+        if comment_width > max_width:
+            # 適当な位置で折り返し
+            words = list(comment_text)
+            lines = []
+            current_line = ""
+            
+            for word in words:
+                test_line = current_line + word
+                test_width = self.calculate_text_width(test_line, comment_font, draw)
                 
-            Returns:
-                Image.Image: レビューコメント付き製品スライド
-            """
-            # 背景画像を作成
-            img = Image.new('RGB', (self.VIDEO_WIDTH, self.VIDEO_HEIGHT), self.BG_COLOR)
-            draw = ImageDraw.Draw(img)
+                if test_width <= max_width:
+                    current_line = test_line
+                else:
+                    lines.append(current_line)
+                    current_line = word
             
-            # 画像が存在する場合
-            if 'image_url' in product and product['image_url']:
-                try:
-                    # 画像を一時保存（既に保存済みならその画像を使用）
-                    img_path = os.path.join(self.temp_dir, f"{product['product_id']}.jpg")
-                    
-                    # 画像がなければダミー画像を使用
-                    if not os.path.exists(img_path):
-                        img_path = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'assets', 'dummy_product.jpg')
-                        
-                        if not os.path.exists(img_path):
-                            # ダミー画像もなければ作成
-                            self._create_dummy_image(img_path, product['name'])
-                    
-                    # 画像読み込み
-                    product_img = Image.open(img_path)
-                    
-                    # リサイズ（アスペクト比保持、サイズ調整）
-                    img_width, img_height = product_img.size
-                    aspect_ratio = img_width / img_height
-                    
-                    # 画面の50%を最大高さとする（上部に表示するため小さめに）
-                    max_height = int(self.VIDEO_HEIGHT * 0.5)
-                    new_height = min(max_height, img_height)
-                    new_width = int(new_height * aspect_ratio)
-                    
-                    if new_width > self.VIDEO_WIDTH * 0.8:
-                        new_width = int(self.VIDEO_WIDTH * 0.8)
-                        new_height = int(new_width / aspect_ratio)
-                    
-                    product_img = product_img.resize((new_width, new_height), Image.LANCZOS)
-                    
-                    # 画像配置（中央上部に固定）- 画面の上から25%の位置
-                    img_x = (self.VIDEO_WIDTH - new_width) // 2
-                    img_y = int(self.VIDEO_HEIGHT * 0.25) - (new_height // 2)
-                    
-                    # 画像貼り付け
-                    img.paste(product_img, (img_x, img_y))
-                    
-                    # 商品名を画像の下に表示
-                    product_name = product['name']
-                    brand_name = product['brand']
-                    name_font = self.get_font(self.TITLE_FONT_SIZE, self.noto_sans_jp_bold_path)
-                    brand_font = self.get_font(self.BRAND_FONT_SIZE, self.noto_sans_jp_path)
-                    
-                    # 商品名の表示位置（画像の下）
-                    name_y = img_y + new_height + 20
-                    
-                    # 商品名を中央揃えで表示
-                    name_width = self.calculate_text_width(product_name, name_font, draw)
-                    name_x = (self.VIDEO_WIDTH - name_width) // 2
-                    
-                    # 商品名を表示（白色で縁取り）
-                    self.apply_text_outline(
-                        draw=draw,
-                        text=product_name,
-                        x=name_x,
-                        y=name_y,
-                        font=name_font,
-                        text_color=self.TITLE_COLOR,
-                        outline_color=self.SHADOW_COLOR,
-                        outline_width=2
-                    )
-                    
-                    # ブランド名の表示位置（商品名の下）
-                    brand_y = name_y + self.TITLE_FONT_SIZE + 10
-                    
-                    # ブランド名を中央揃えで表示
-                    brand_width = self.calculate_text_width(brand_name, brand_font, draw)
-                    brand_x = (self.VIDEO_WIDTH - brand_width) // 2
-                    
-                    # ブランド名を表示（グレーで）
-                    draw.text(
-                        (brand_x, brand_y),
-                        brand_name,
-                        font=brand_font,
-                        fill=(200, 200, 200)  # ライトグレー
-                    )
-                    
-                except Exception as e:
-                    logger.error(f"画像読み込みエラー: {str(e)}")
+            if current_line:
+                lines.append(current_line)
             
-            # フォント設定
-            rank_font = self.get_font(self.TITLE_FONT_SIZE, self.noto_sans_jp_bold_path)
-            comment_font = self.get_font(self.REVIEW_FONT_SIZE, self.noto_sans_jp_path)
+            # 複数行のコメントを描画
+            line_height = int(self.REVIEW_FONT_SIZE * 1.5)
+            comment_height = line_height * len(lines)
             
-            # 順位表示
-            rank_text = f"{rank}位"
-            self.apply_text_outline(
-                draw=draw,
-                text=rank_text,
-                x=50,
-                y=50,
-                font=rank_font,
-                text_color=self.RANK_COLOR,
-                outline_color=self.SHADOW_COLOR,
-                outline_width=2
+            # コメント位置の決定
+            if comment_position == "top":
+                # 上部に表示（画面上部から10%の位置）
+                comment_y = int(self.VIDEO_HEIGHT * 0.1)
+            elif comment_position == "middle":
+                # 中央に表示（画面の中央）
+                comment_y = int(self.VIDEO_HEIGHT * 0.5) - (comment_height // 2)
+            else:  # bottom
+                # 下部に表示（画面下部から10%上の位置）
+                comment_y = int(self.VIDEO_HEIGHT * 0.9) - comment_height
+            
+            # 背景の四角を描画
+            padding = 20
+            box_top = comment_y - padding
+            box_bottom = comment_y + comment_height + padding
+            box_left = (self.VIDEO_WIDTH - max_width) // 2 - padding
+            box_right = (self.VIDEO_WIDTH + max_width) // 2 + padding
+            
+            draw.rectangle(
+                [(box_left, box_top), (box_right, box_bottom)],
+                fill=(0, 0, 0, 128),  # 半透明黒
+                outline=border_color,  # インデックスに応じた色の枠
+                width=5  # 太い枠線
             )
             
-            # コメントを四角で囲んで表示
-            comment_text = f"「{comment}」"
-            comment_width = self.calculate_text_width(comment_text, comment_font, draw)
-            
-            # コメントインデックスに応じて色を設定
-            if comment_index == 0:
-                border_color = (255, 50, 50)  # 赤色
-            elif comment_index == 1:
-                border_color = (50, 255, 50)  # 緑色
-            else:
-                border_color = (50, 50, 255)  # 青色
-            
-            # コメントが長い場合は折り返し
-            max_width = int(self.VIDEO_WIDTH * 0.8)
-            if comment_width > max_width:
-                # 適当な位置で折り返し
-                words = list(comment_text)
-                lines = []
-                current_line = ""
+            # 各行を描画
+            for i, line in enumerate(lines):
+                line_y = comment_y + i * line_height
+                line_width = self.calculate_text_width(line, comment_font, draw)
+                line_x = (self.VIDEO_WIDTH - line_width) // 2
                 
-                for word in words:
-                    test_line = current_line + word
-                    test_width = self.calculate_text_width(test_line, comment_font, draw)
-                    
-                    if test_width <= max_width:
-                        current_line = test_line
-                    else:
-                        lines.append(current_line)
-                        current_line = word
-                
-                if current_line:
-                    lines.append(current_line)
-                
-                # 複数行のコメントを描画
-                line_height = int(self.REVIEW_FONT_SIZE * 1.5)
-                comment_height = line_height * len(lines)
-                
-                # コメント位置の決定（常に下部に表示）
-                comment_y = self.VIDEO_HEIGHT - comment_height - 150
-                
-                # 背景の四角を描画
-                padding = 20
-                box_top = comment_y - padding
-                box_bottom = comment_y + comment_height + padding
-                box_left = (self.VIDEO_WIDTH - max_width) // 2 - padding
-                box_right = (self.VIDEO_WIDTH + max_width) // 2 + padding
-                
-                draw.rectangle(
-                    [(box_left, box_top), (box_right, box_bottom)],
-                    fill=(0, 0, 0, 128),  # 半透明黒
-                    outline=border_color,  # インデックスに応じた色の枠
-                    width=5  # 太い枠線
-                )
-                
-                # 各行を描画
-                for i, line in enumerate(lines):
-                    line_y = comment_y + i * line_height
-                    line_width = self.calculate_text_width(line, comment_font, draw)
-                    line_x = (self.VIDEO_WIDTH - line_width) // 2
-                    
-                    draw.text(
-                        (line_x, line_y),
-                        line,
-                        font=comment_font,
-                        fill=self.TEXT_COLOR
-                    )
-            else:
-                # 1行のコメント
-                # コメント位置の決定（常に下部に表示）
-                comment_y = self.VIDEO_HEIGHT - 150
-                
-                comment_x = (self.VIDEO_WIDTH - comment_width) // 2
-                
-                # 背景の四角を描画
-                padding = 20
-                box_width = comment_width + padding * 2
-                box_height = self.REVIEW_FONT_SIZE + padding * 2
-                
-                draw.rectangle(
-                    [(comment_x - padding, comment_y - padding), 
-                    (comment_x + comment_width + padding, comment_y + box_height - padding)],
-                    fill=(0, 0, 0, 128),  # 半透明黒
-                    outline=border_color,  # インデックスに応じた色の枠
-                    width=5  # 太い枠線
-                )
-                
-                # コメントを描画
                 draw.text(
-                    (comment_x, comment_y),
-                    comment_text,
+                    (line_x, line_y),
+                    line,
                     font=comment_font,
                     fill=self.TEXT_COLOR
                 )
+        else:
+            # 1行のコメント
+            # コメント位置の決定
+            if comment_position == "top":
+                # 上部に表示（画面上部から10%の位置）
+                comment_y = int(self.VIDEO_HEIGHT * 0.1)
+            elif comment_position == "middle":
+                # 中央に表示（画面の中央）
+                comment_y = int(self.VIDEO_HEIGHT * 0.5) - (self.REVIEW_FONT_SIZE // 2)
+            else:  # bottom
+                # 下部に表示（画面下部から10%上の位置）
+                comment_y = int(self.VIDEO_HEIGHT * 0.9) - self.REVIEW_FONT_SIZE
             
-            return img
+            comment_x = (self.VIDEO_WIDTH - comment_width) // 2
+            
+            # 背景の四角を描画
+            padding = 20
+            box_width = comment_width + padding * 2
+            box_height = self.REVIEW_FONT_SIZE + padding * 2
+            
+            draw.rectangle(
+                [(comment_x - padding, comment_y - padding), 
+                (comment_x + comment_width + padding, comment_y + box_height - padding)],
+                fill=(0, 0, 0, 128),  # 半透明黒
+                outline=border_color,  # インデックスに応じた色の枠
+                width=5  # 太い枠線
+            )
+            
+            # コメントを描画
+            draw.text(
+                (comment_x, comment_y),
+                comment_text,
+                font=comment_font,
+                fill=self.TEXT_COLOR
+            )
+        
+        return img
 
     def _add_comment_to_slide(
             self,

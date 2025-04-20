@@ -129,7 +129,13 @@ def run_pipeline(args):
             db.update_run_status(run_id, "error")
             return False
         
-        # 6. レビュー生成（OpenAI使用）
+        # 6. 製品画像をダウンロード（ここで追加）
+        temp_image_dir = os.path.join('data', 'temp')
+        logger.info(f"製品画像のダウンロード開始: {len(selected_products)}個")
+        selected_products = scraper.download_product_images(selected_products, temp_image_dir)
+        logger.info("製品画像のダウンロード完了")
+        
+        # 7. レビュー生成（OpenAI使用）
         review_generator = ReviewGenerator()
         selected_with_reviews = []
         
@@ -151,7 +157,7 @@ def run_pipeline(args):
             
             selected_with_reviews.append(product)
         
-        # 7. 使用した製品をマーク
+        # 8. 使用した製品をマーク
         product_ids = [p["product_id"] for p in selected_with_reviews]
         db.mark_products_as_used(product_ids)
         
@@ -163,6 +169,7 @@ def run_pipeline(args):
                 print(f"ID: {product['product_id']}")
                 print(f"名前: {product['name']}")
                 print(f"ブランド: {product['brand']}")
+                print(f"画像パス: {product.get('local_image_path', 'なし')}")
                 print(f"レビュー:")
                 for j, review in enumerate(product['reviews'], 1):
                     print(f"  {j}. {review}")
@@ -170,14 +177,14 @@ def run_pipeline(args):
             db.update_run_status(run_id, "success")
             return True
         
-        # 8. 動画作成
-        video_maker = VideoMaker()
+        # 9. 動画作成
+        video_maker = VideoMaker(temp_dir=temp_image_dir)  # temp_dirを明示的に設定
         output_video = video_maker.create_video(
             products=selected_with_reviews,
             title=f"{args.channel}で買える{args.genre}ランキング",
         )
 
-        # 9. GCS へアップロード
+        # 10. GCS へアップロード
         uploader = GCSUploader(
             bucket_name=os.environ["GCS_BUCKET"],
             credentials_path=os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"),
@@ -190,7 +197,7 @@ def run_pipeline(args):
             channel=args.channel
         )
 
-        # 10. QA ＋ スプレッドシート登録
+        # 11. QA ＋ スプレッドシート登録
         qa = VideoQA()
         is_ok, meta, err = qa.validate_video(output_video)
         qa.add_to_spreadsheet(
@@ -203,7 +210,7 @@ def run_pipeline(args):
             notes=err
         )
 
-        # 11. 通知
+        # 12. 通知
         notifier = Notifier()
         if is_ok:
             notifier.notify_video_created(
@@ -219,10 +226,6 @@ def run_pipeline(args):
             )
 
         db.update_run_status(run_id, "success", video_gs_uri=gcs_uri)
-        return True
-        
-        logger.info("動画作成、アップロード、通知機能は未実装です")
-        db.update_run_status(run_id, "success")
         return True
         
     except Exception as e:
