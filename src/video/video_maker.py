@@ -272,7 +272,7 @@ class VideoMaker:
         rank: int
     ) -> Image.Image:
         """
-        製品スライドの作成（画像と商品名のみ表示）- 画像のようなスタイリッシュなデザインに改良
+        製品スライドの作成（画像と商品名のみ表示）
         
         Args:
             product: 製品情報
@@ -337,115 +337,126 @@ class VideoMaker:
                 logger.error(f"画像ダウンロードエラー: {str(e)}")
                 img_loaded = False
         
-        # フォント設定 - より大きなサイズに変更
-        rank_font = self.get_font(self.TITLE_FONT_SIZE * 2.0, self.noto_sans_jp_bold_path)  # 大きな順位フォント
-        name_font = self.get_font(self.TITLE_FONT_SIZE * 1.5, self.noto_sans_jp_bold_path)  # 大きな商品名フォント
-        brand_font = self.get_font(self.BRAND_FONT_SIZE * 1.5, self.noto_sans_jp_bold_path) # ブランド名フォント（太字）
+        # フォント設定
+        rank_font = self.get_font(self.TITLE_FONT_SIZE * 1.3, self.noto_sans_jp_bold_path)
+        name_font = self.get_font(self.TITLE_FONT_SIZE, self.noto_sans_jp_bold_path)
+        brand_font = self.get_font(self.BRAND_FONT_SIZE, self.noto_sans_jp_path)
         
-        # 商品名を表示（中央揃え、少し下に配置）
-        product_name = product.get('name', 'No Name')
-        brand_name = product.get('brand', 'No Brand')
-        
-        # 画像を中央に配置
-        try:
-            if product_img:
-                # 画像サイズチェック
-                img_width, img_height = product_img.size
-                logger.info(f"元の画像サイズ: {img_width}x{img_height}")
-                
-                # 縦横比の計算
-                aspect_ratio = img_width / img_height if img_height > 0 else 1
-                
-                # 幅を画面の85%に設定
-                new_width = int(self.VIDEO_WIDTH * 0.85)
-                new_height = int(new_width / aspect_ratio)
-                
-                # ログ出力
-                logger.info(f"リサイズ後の画像サイズ: {new_width}x{new_height}")
-                
-                # リサイズ
-                product_img = product_img.resize((new_width, new_height), Image.LANCZOS)
-                
-                # 画像を中央下部に配置
-                img_x = (self.VIDEO_WIDTH - new_width) // 2
-                img_y = int(self.VIDEO_HEIGHT * 0.35)  # 画面の35%位置に配置
-                
-                # 画像貼り付け
-                img.paste(product_img, (img_x, img_y))
-            else:
-                logger.warning("商品画像が読み込めませんでした")
-        except Exception as e:
-            logger.error(f"画像処理エラー: {str(e)}")
-        
-        rank_text = f"第{rank}位"
-        rank_font_size = self.TITLE_FONT_SIZE * 2.0  # 大きく表示
-        rank_font = self.get_font(int(rank_font_size), self.noto_sans_jp_bold_path)
+        # 順位表示（上部中央に配置）
+        rank_text = f"{rank}位"
         rank_width = self.calculate_text_width(rank_text, rank_font, draw)
         rank_x = (self.VIDEO_WIDTH - rank_width) // 2  # 中央揃え
-        rank_y = 50  # 上部に配置
+        rank_y = 50
         
-        # 順位テキストを縁取りで描画（白テキスト、黒い太い縁取り）
+        # 順位表示の背景（白色の四角形）
+        rank_padding = 20
+        rank_bg_width = rank_width + rank_padding * 2
+        rank_bg_height = self.TITLE_FONT_SIZE * 1.3 + rank_padding
+        
+        # 背景の四角形を描画
+        draw.rectangle(
+            [(rank_x - rank_padding, rank_y - rank_padding // 2), 
+            (rank_x + rank_width + rank_padding, rank_y + rank_bg_height)],
+            fill=self.TEXT_BG_COLOR  # 白色背景
+        )
+        
+        # 順位テキストを描画
         self.apply_text_outline(
             draw=draw,
             text=rank_text,
             x=rank_x,
             y=rank_y,
             font=rank_font,
-            text_color=(255, 255, 255),  # 白色
-            outline_color=(0, 0, 0),     # 黒色
-            outline_width=12             # 太い縁取り
+            text_color=self.RANK_COLOR,
+            outline_color=self.SHADOW_COLOR,
+            outline_width=2
         )
         
-        commercial_name = f"{brand_name} {product_name}"  # ブランド名と商品名を結合
+        # 商品名を表示（中央揃え、少し下に配置）
+        product_name = product.get('name', 'No Name')
+        brand_name = product.get('brand', 'No Brand')
         
-        # 長い場合は2行に分ける
-        if len(commercial_name) > 20:
-            name_parts = [brand_name, product_name]
-        else:
-            name_parts = [commercial_name]
+        # 商品名の表示位置（中央揃え）
+        name_y = 250  # もっと下に配置
+        name_width = self.calculate_text_width(product_name, name_font, draw)
+        name_x = (self.VIDEO_WIDTH - name_width) // 2
         
-        # 商品名を上部に配置（画像の上）
-        name_y = 160  # 順位表示の下
+        # 商品名の背景（白色の四角形）
+        name_padding = 20
+        name_bg_width = name_width + name_padding * 2
+        name_bg_height = self.TITLE_FONT_SIZE + name_padding
         
-        # 名前の部分を描画
-        for i, part in enumerate(name_parts):
-            name_font_size = self.TITLE_FONT_SIZE * 1.3  # 大きめに表示
-            name_font = self.get_font(int(name_font_size), self.noto_sans_jp_bold_path)
-            name_width = self.calculate_text_width(part, name_font, draw)
-            name_x = (self.VIDEO_WIDTH - name_width) // 2  # 中央揃え
+        # 背景の四角形を描画
+        draw.rectangle(
+            [(name_x - name_padding, name_y - name_padding // 2), 
+            (name_x + name_width + name_padding, name_y + name_bg_height)],
+            fill=self.TEXT_BG_COLOR  # 白色背景
+        )
+        
+        # 商品名を表示
+        self.apply_text_outline(
+            draw=draw,
+            text=product_name,
+            x=name_x,
+            y=name_y,
+            font=name_font,
+            text_color=self.TITLE_COLOR,
+            outline_color=self.SHADOW_COLOR,
+            outline_width=2
+        )
+        
+        # ブランド名の表示位置（商品名の下）
+        brand_y = name_y + self.TITLE_FONT_SIZE + 20
+        brand_width = self.calculate_text_width(brand_name, brand_font, draw)
+        brand_x = (self.VIDEO_WIDTH - brand_width) // 2
+        
+        # ブランド名の背景（白色の四角形）
+        brand_padding = 15
+        brand_bg_width = brand_width + brand_padding * 2
+        brand_bg_height = self.BRAND_FONT_SIZE + brand_padding
+        
+        # 背景の四角形を描画
+        draw.rectangle(
+            [(brand_x - brand_padding, brand_y - brand_padding // 2), 
+            (brand_x + brand_width + brand_padding, brand_y + brand_bg_height)],
+            fill=self.TEXT_BG_COLOR  # 白色背景
+        )
+        
+        # ブランド名を表示
+        draw.text(
+            (brand_x, brand_y),
+            brand_name,
+            font=brand_font,
+            fill=(50, 50, 50)  # ダークグレー
+        )
+        
+        # 画像を中央下部に配置
+        try:
+            # 画像サイズチェック
+            img_width, img_height = product_img.size
+            logger.info(f"元の画像サイズ: {img_width}x{img_height}")
             
-            # 縁取り効果（赤系テキストに白い縁取り、さらに黒い外側縁取り）
-            # 1. まず黒い外側の縁取り
-            self.apply_text_outline(
-                draw=draw,
-                text=part,
-                x=name_x,
-                y=name_y + i * int(name_font_size * 1.3),  # 行間を空ける
-                font=name_font,
-                text_color=(0, 0, 0, 0),  # 透明（後で上書き）
-                outline_color=(0, 0, 0),   # 黒色
-                outline_width=10           # 太い外側縁取り
-            )
+            # 縦横比の計算
+            aspect_ratio = img_width / img_height if img_height > 0 else 1
             
-            # 2. 次に白い内側の縁取り
-            self.apply_text_outline(
-                draw=draw,
-                text=part,
-                x=name_x,
-                y=name_y + i * int(name_font_size * 1.3),  # 行間を空ける
-                font=name_font,
-                text_color=(0, 0, 0, 0),      # 透明（後で上書き）
-                outline_color=(255, 255, 255), # 白色
-                outline_width=5               # 中程度の内側縁取り
-            )
+            # 幅を画面の80%に設定（常に）
+            new_width = int(self.VIDEO_WIDTH * 0.8)
+            new_height = int(new_width / aspect_ratio)
             
-            # 3. 最後に赤系テキスト本体
-            draw.text(
-                (name_x, name_y + i * int(name_font_size * 1.3)),
-                part,
-                font=name_font,
-                fill=(181, 46, 46)  # 暗い赤色 (B52E2E)
-            )
+            # ログ出力
+            logger.info(f"リサイズ後の画像サイズ: {new_width}x{new_height}")
+            
+            # リサイズ
+            product_img = product_img.resize((new_width, new_height), Image.LANCZOS)
+            
+            # 画像をブランド名の下に配置（さらに下に）
+            img_x = (self.VIDEO_WIDTH - new_width) // 2
+            img_y = brand_y + self.BRAND_FONT_SIZE + 70  # さらに下に配置
+            
+            # 画像貼り付け
+            img.paste(product_img, (img_x, img_y))
+        except Exception as e:
+            logger.error(f"画像処理エラー: {str(e)}")
         
         return img
     
@@ -1127,6 +1138,37 @@ class VideoMaker:
                                 [(brand_x - brand_padding, brand_y - brand_padding // 2), 
                                 (brand_x + brand_width + brand_padding, brand_y + brand_bg_height)],
                                 fill=self.BG_COLOR  # 黒色背景
+                            )
+                            
+                            # 順位表示を再描画（中央揃えで）
+                            rank_font = self.get_font(self.TITLE_FONT_SIZE * 1.3, self.noto_sans_jp_bold_path)
+                            rank_text = f"{rank}位"
+                            rank_width = self.calculate_text_width(rank_text, rank_font, draw)
+                            rank_x = (self.VIDEO_WIDTH - rank_width) // 2  # 中央揃え
+                            rank_y = 50
+                            
+                            # 順位表示の背景（白色の四角形）
+                            rank_padding = 20
+                            rank_bg_width = rank_width + rank_padding * 2
+                            rank_bg_height = self.TITLE_FONT_SIZE * 1.3 + rank_padding
+                            
+                            # 背景の四角形を描画
+                            draw.rectangle(
+                                [(rank_x - rank_padding, rank_y - rank_padding // 2), 
+                                (rank_x + rank_width + rank_padding, rank_y + rank_bg_height)],
+                                fill=self.TEXT_BG_COLOR  # 白色背景
+                            )
+                            
+                            # 順位テキストを描画
+                            self.apply_text_outline(
+                                draw=draw,
+                                text=rank_text,
+                                x=rank_x,
+                                y=rank_y,
+                                font=rank_font,
+                                text_color=self.RANK_COLOR,
+                                outline_color=self.SHADOW_COLOR,
+                                outline_width=2
                             )
                             
                             # ベーススライドを保存
