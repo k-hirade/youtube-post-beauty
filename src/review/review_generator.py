@@ -1,13 +1,15 @@
 """
 @file: review_generator.py
-@desc: OpenAI APIを活用して製品レビューの短い要約を生成するモジュール
+@desc: 製品の口コミページから要点を抽出し、短いレビュー要約を生成するモジュール
 """
 
 import os
 import time
 import logging
 import random
+import requests
 from typing import Dict, List, Optional, Any
+from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
 
 # OpenAI APIクライアント
@@ -17,7 +19,7 @@ from openai import OpenAI
 logger = logging.getLogger(__name__)
 
 class ReviewGenerator:
-    """製品レビューを生成するクラス"""
+    """製品レビューを抽出・要約するクラス"""
     
     def __init__(
         self, 
@@ -32,7 +34,6 @@ class ReviewGenerator:
         Args:
             api_key: OpenAI APIキー（Noneの場合は環境変数から取得）
             model: 使用するモデル名
-            temperature: 生成の多様性（0.0-1.0）
             max_retries: 最大リトライ回数
             retry_delay: リトライ間隔（秒）
         """
@@ -43,22 +44,82 @@ class ReviewGenerator:
         self.model = model
         self.max_retries = max_retries
         self.retry_delay = retry_delay
+        self.base_url = "https://www.cosme.net"
+        self.session = requests.Session()
+        self.session.headers.update({
+            "User-Agent": "Auto-Cosme-Shorts/0.1 (https://example.com/bot; bot@example.com)"
+        })
         
         # APIクライアント設定
         self.client = OpenAI(api_key=self.api_key)
     
-    def _get_user_prompt(self, product: Dict[str, Any]) -> str:
-        """ユーザープロンプトを生成"""
+    def _get_product_reviews(self, product_id: str) -> List[str]:
+        """
+        製品の口コミページから実際のレビューテキストを取得
+        
+        Args:
+            product_id: 製品ID
+            
+        Returns:
+            レビューテキストのリスト
+        """
+        try:
+            # 製品の口コミページのURL
+            url = f"{self.base_url}/products/{product_id}/review/"
+            logger.info(f"口コミページ取得中: {url}")
+            
+            # ページを取得
+            response = self.session.get(url, timeout=30)
+            response.raise_for_status()
+            
+            # HTMLをパース
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            # 口コミテキストを抽出
+            reviews = []
+            review_elements = soup.select("p.review-text.description")
+            
+            logger.info(f"口コミ要素数: {len(review_elements)}")
+            
+            for elem in review_elements[:5]:  # 最大で5つの口コミを取得
+                review_text = elem.text.strip()
+                if review_text:
+                    reviews.append(review_text)
+            
+            return reviews
+            
+        except Exception as e:
+            logger.error(f"口コミ取得エラー: {str(e)}")
+            return []
+    
+    def _get_summary_prompt(self, product: Dict[str, Any], reviews: List[str]) -> str:
+        """口コミ要約のためのプロンプトを生成"""
+        reviews_text = "\n\n".join([f"口コミ{i+1}: {review}" for i, review in enumerate(reviews)])
+        
+        return f"""
+        「{product['brand']}」の「{product['name']}」についての実際の口コミから、重要な要点を3つに絞って要約してください。
+        
+        以下の口コミを分析し、最も印象的な3つのポイントを抽出してください:
+        
+        {reviews_text}
+        
+        各要点は必ず20文字以内で、単純明快に表現してください。
+        出力は3行でそれぞれの要点だけをシンプルに書いてください。余計な説明は不要です。
+        """
+    
+    def _get_fallback_prompt(self, product: Dict[str, Any]) -> str:
+        """口コミが取得できなかった場合のフォールバックプロンプト"""
         return f"""
         「{product['brand']}」の「{product['name']}」についての感想を3つ作成してください。
         ジャンル: {product['genre']}
-
+        
+        一般的な{product['genre']}製品の口コミの傾向を踏まえて、現実的で説得力のある要点を考えてください。
         各感想は必ず20文字以内にしてください。
         出力は3行でそれぞれの感想だけをシンプルに書いてください。
         """
     
     def _parse_response(self, response_text: str) -> List[str]:
-        """APIレスポンスから感想を抽出"""
+        """APIレスポンスから要点を抽出"""
         lines = [line.strip() for line in response_text.strip().split('\n')]
         # 空行を除外
         summaries = [line for line in lines if line]
@@ -68,7 +129,7 @@ class ReviewGenerator:
     
     def generate_reviews(self, product: Dict[str, Any]) -> List[str]:
         """
-        製品の短いレビューを生成
+        製品の口コミから要点を抽出して短い要約を生成
         
         Args:
             product: 製品情報辞書
@@ -78,9 +139,18 @@ class ReviewGenerator:
         """
         logger.info(f"レビュー生成開始: {product['name']}")
         
+        # 実際の口コミを取得
+        reviews = self._get_product_reviews(product["product_id"])
+        
         for attempt in range(self.max_retries):
             try:
-                user_prompt = self._get_user_prompt(product)
+                # 口コミが取得できた場合は要約プロンプト、取得できなかった場合はフォールバックプロンプトを使用
+                if reviews:
+                    logger.info(f"口コミ{len(reviews)}件を取得、要約開始")
+                    user_prompt = self._get_summary_prompt(product, reviews)
+                else:
+                    logger.warning(f"口コミが取得できなかったため、フォールバックを使用")
+                    user_prompt = self._get_fallback_prompt(product)
                 
                 response = self.client.chat.completions.create(
                     model=self.model,
@@ -95,14 +165,14 @@ class ReviewGenerator:
                 # バリデーション：20文字以内か確認
                 valid_summaries = []
                 for summary in summaries:
-                    if len(summary) <= 20:
+                    if len(summary) <= 40:
                         valid_summaries.append(summary)
                     else:
                         # 長すぎる場合は切り詰め
                         valid_summaries.append(summary[:20])
                 
-                logger.info(f"レビュー生成成功: {len(valid_summaries)}件")
-                return valid_summaries
+                logger.info(f"レビュー生成成功: {valid_summaries}")
+                return valid_summaries[:3]  # 必ず3つだけ返す
                 
             except Exception as e:
                 logger.error(f"レビュー生成エラー (試行 {attempt+1}/{self.max_retries}): {str(e)}")
@@ -111,54 +181,3 @@ class ReviewGenerator:
                     # 次のリトライまで待機（エクスポネンシャルバックオフ）
                     sleep_time = self.retry_delay * (2 ** attempt)
                     time.sleep(sleep_time)
-                else:
-                    logger.error("リトライ上限に達しました。フォールバックレビューを使用します。")
-                    # フォールバックとして汎用的なレビューを返す
-                    return self._get_fallback_reviews(product['genre'])
-        
-        # すべてのリトライが失敗した場合
-        return self._get_fallback_reviews(product['genre'])
-    
-    def _get_fallback_reviews(self, genre: str) -> List[str]:
-        """
-        APIが失敗した時のフォールバックレビュー
-        
-        Args:
-            genre: 製品ジャンル
-        
-        Returns:
-            フォールバックレビューのリスト
-        """
-        # ジャンル別のフォールバックレビュー
-        fallbacks = {
-            "化粧水": [
-                "肌がもっちり潤う",
-                "つけ心地さっぱり",
-                "乾燥知らずになった"
-            ],
-            "乳液": [
-                "しっとり肌守る",
-                "伸びがいいのに軽い",
-                "ベタつかず保湿◎"
-            ],
-            "美容液": [
-                "ハリ実感できた！",
-                "毛穴目立たなくなる",
-                "透明感がアップ"
-            ],
-            "パック": [
-                "翌朝肌が違う",
-                "集中保湿できる",
-                "手軽に贅沢ケア"
-            ]
-        }
-        
-        # 該当ジャンルがなければ汎用レビュー
-        if genre not in fallbacks:
-            return [
-                "コスパ最高でリピ確定",
-                "使い心地がイイ",
-                "効果実感できた"
-            ]
-        
-        return fallbacks[genre]

@@ -138,25 +138,17 @@ def run_pipeline(args):
         # 7. レビュー生成（OpenAI使用）
         review_generator = ReviewGenerator()
         selected_with_reviews = []
-        
+
         for product in selected_products:
-            # 既存のレビューをチェック
-            existing_reviews = db.get_reviews(product["product_id"])
+            logger.info(f"レビュー生成: {product['name']}")
+            reviews = review_generator.generate_reviews(product)
+            product["reviews"] = reviews
             
-            if existing_reviews:
-                logger.info(f"既存のレビューを使用: {product['name']}")
-                product["reviews"] = existing_reviews["summaries"]
-            else:
-                # 新しいレビューを生成
-                logger.info(f"レビュー生成: {product['name']}")
-                reviews = review_generator.generate_reviews(product)
-                product["reviews"] = reviews
-                
-                # レビューをキャッシュに保存
-                db.save_reviews(product["product_id"], reviews)
+            # レビューをキャッシュに保存
+            db.save_reviews(product["product_id"], reviews)
             
             selected_with_reviews.append(product)
-        
+                
         # 8. 使用した製品をマーク
         product_ids = [p["product_id"] for p in selected_with_reviews]
         db.mark_products_as_used(product_ids)

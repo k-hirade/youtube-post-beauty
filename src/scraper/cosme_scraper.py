@@ -68,7 +68,6 @@ class CosmeNetScraper:
         """
         self._respect_rate_limit()
         try:
-            logger.info(f"URLを取得中: {url}")
             response = self.session.get(url)
             response.raise_for_status()
             return response.text
@@ -88,7 +87,6 @@ class CosmeNetScraper:
         """
         try:
             url = f"{self.BASE_URL}/products/{product_id}/"
-            logger.info(f"製品詳細ページ取得中: {url}")
             
             html = self.get_page(url)
             soup = BeautifulSoup(html, 'html.parser')
@@ -130,7 +128,6 @@ class CosmeNetScraper:
             product_name_elem = soup.select_one("strong.pdct-name")
             if product_name_elem:
                 product_name = product_name_elem.text.strip()
-                logger.info(f"製品名を取得: {product_name}")
             
             # 結果をマージ
             result = {

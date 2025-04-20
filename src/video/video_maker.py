@@ -282,7 +282,6 @@ class VideoMaker:
             local_path = product['local_image_path']
             if os.path.exists(local_path):
                 try:
-                    logger.info(f"ローカル画像を読み込み中: {local_path}")
                     product_img = Image.open(local_path)
                     img_loaded = True
                 except Exception as e:
@@ -294,7 +293,6 @@ class VideoMaker:
             img_path = os.path.join(self.temp_dir, f"{product['product_id']}.jpg")
             if os.path.exists(img_path):
                 try:
-                    logger.info(f"一時ディレクトリの画像を読み込み中: {img_path}")
                     product_img = Image.open(img_path)
                     img_loaded = True
                 except Exception as e:
@@ -326,43 +324,6 @@ class VideoMaker:
             except Exception as e:
                 logger.error(f"画像ダウンロードエラー: {str(e)}")
                 img_loaded = False
-        
-        # 4. ダミー画像を使用
-        if not img_loaded:
-            try:
-                # まずプロジェクトのダミー画像を試す
-                dummy_path = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'assets', 'dummy_product.jpg')
-                
-                # ダミー画像がなければ作成
-                if not os.path.exists(dummy_path):
-                    logger.info(f"ダミー画像を作成: {dummy_path}")
-                    self._create_dummy_image(dummy_path, product.get('name', 'No Image'))
-                
-                product_img = Image.open(dummy_path)
-                img_loaded = True
-                logger.info(f"ダミー画像を使用: {dummy_path}")
-            except Exception as e:
-                logger.error(f"ダミー画像読み込みエラー: {str(e)}")
-                # ここでは何もせず、下でメモリ上にダミー画像を作成
-        
-        # 5. どの方法でも失敗した場合、メモリ上にダミー画像を作成
-        if not img_loaded or product_img is None:
-            logger.warning("すべての画像取得方法が失敗したため、メモリ上にダミー画像を作成します")
-            width, height = 800, 800
-            product_img = Image.new('RGB', (width, height), color=(200, 200, 200))
-            draw_dummy = ImageDraw.Draw(product_img)
-            
-            # テキストを描画
-            dummy_text = product.get('name', 'No Image')
-            try:
-                font = self.get_font(60, self.noto_sans_jp_path)
-            except Exception:
-                font = ImageFont.load_default()
-            
-            text_width = self.calculate_text_width(dummy_text, font, draw_dummy)
-            text_height = int(60 * 1.2)  # 概算
-            position = ((width - text_width) // 2, (height - text_height) // 2)
-            draw_dummy.text(position, dummy_text, fill=(100, 100, 100), font=font)
         
         # 画像のリサイズと配置
         try:
@@ -857,7 +818,6 @@ class VideoMaker:
                         cmd.append(product_video_path)
                         try:
                             result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, text=True)
-                            logger.info(f"製品 {rank} の動画生成成功")
                         except subprocess.CalledProcessError as e:
                             logger.error(f"製品 {rank} の動画生成エラー: {e.stderr}")
                             raise
@@ -876,33 +836,24 @@ class VideoMaker:
                             positions = ["top", "middle", "bottom"]
                             comment_position = positions[i % len(positions)]
                             
-                            # 初回の場合、製品画像スライドをベースにする
                             if base_slide is None:
                                 base_slide = product_slide.copy()
                             
-                            # コメントを追加したスライド作成
-                            # コメントをベースに追加（既存のコメントはそのまま）
                             base_slide = self._add_comment_to_slide(
                                 base_slide, product, rank, review, comment_position, i
                             )
                             comment_slide_path = os.path.join(temp_dir, f"product_{rank}_comment_{i+1}.png")
                             base_slide.save(comment_slide_path)
                             
-                            # コメントナレーション音声を生成
                             comment_audio_path = os.path.join(temp_dir, f"product_{rank}_comment_{i+1}_audio.wav")
                             
-                            # 必ず音声を生成するか確認するためのログ
-                            logger.info(f"製品 {rank} のコメント {i+1} の音声生成開始: {review}")
-                            success = generate_narration(review, comment_audio_path, "random")
-                            logger.info(f"製品 {rank} のコメント {i+1} の音声生成結果: {success}, ファイル存在: {os.path.exists(comment_audio_path)}")
+                            comment_success = generate_narration(review, comment_audio_path, "random")
+                            logger.info(f"コメント音声生成: {review} -> 成功: {comment_success}")
                             
-                            # コメントスライドの動画セグメントを作成
                             comment_video_path = os.path.join(temp_dir, f"product_{rank}_comment_{i+1}_video.mp4")
                             
-                            # ナレーション音声があれば使用、なければ3秒間の無音
                             if os.path.exists(comment_audio_path) and os.path.getsize(comment_audio_path) > 100:
                                 audio_duration = get_audio_duration(comment_audio_path)
-                                logger.info(f"製品 {rank} のコメント {i+1} の音声の長さ: {audio_duration}秒")
                                 display_duration = max(audio_duration + 0.5, 3.0)  # 少し余裕を持たせる
                             else:
                                 logger.warning(f"製品 {rank} のコメント {i+1} の音声ファイルが存在しないか無効です。無音を使用します。")
@@ -927,7 +878,6 @@ class VideoMaker:
                             cmd.append(comment_video_path)
                             try:
                                 result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, text=True)
-                                logger.info(f"製品 {rank} のコメント {i+1} の動画生成成功")
                             except subprocess.CalledProcessError as e:
                                 logger.error(f"製品 {rank} のコメント {i+1} の動画生成エラー: {e.stderr}")
                                 raise
@@ -952,7 +902,6 @@ class VideoMaker:
                     
                     try:
                         result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, text=True)
-                        logger.info(f"最終動画の作成成功: {output_path}")
                     except subprocess.CalledProcessError as e:
                         logger.error(f"最終動画の作成エラー: {e.stderr}")
                         raise
