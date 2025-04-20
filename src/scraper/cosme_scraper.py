@@ -369,7 +369,6 @@ class CosmeNetScraper:
             else:
                 logger.debug(f"  ジャンル不一致のため除外: ID={product_id}, {product_name}")
         
-        logger.info(f"{url} から {len(filtered_products)}/{len(products)} 個の製品を抽出")
         return filtered_products
     
     def download_product_images(self, products: List[Dict[str, Any]], output_dir: str) -> List[Dict[str, Any]]:

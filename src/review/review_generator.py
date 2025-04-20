@@ -65,7 +65,7 @@ class ReviewGenerator:
         """
         try:
             # 製品の口コミページのURL
-            url = f"{self.base_url}/products/{product_id}/review/"
+            url = f"{self.base_url}/products/{product_id}"
             logger.info(f"口コミページ取得中: {url}")
             
             # ページを取得
@@ -104,7 +104,7 @@ class ReviewGenerator:
         {reviews_text}
         
         各要点は必ず30文字以内で、単純明快に表現してください。
-        出力は3行でそれぞれの要点だけをシンプルに書いてください。余計な説明は不要です。
+        ＊重要 出力は3行でそれぞれの要点だけをシンプルに書いてください。余計な説明や記号は不要です。要点を文字だけで出力してください。
         """
     
     def _get_fallback_prompt(self, product: Dict[str, Any]) -> str:
