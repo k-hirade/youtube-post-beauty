@@ -74,7 +74,81 @@ class CosmeNetScraper:
         except requests.RequestException as e:
             logger.error(f"ページ取得エラー: {url}, {str(e)}")
             raise
+    
+    def get_product_detail(self, product_id: str) -> Dict[str, Any]:
+        """
+        製品詳細ページから追加情報を取得
         
+        Args:
+            product_id: 製品ID
+            
+        Returns:
+            追加情報の辞書
+        """
+        try:
+            url = f"{self.BASE_URL}/products/{product_id}/"
+            logger.info(f"製品詳細ページ取得中: {url}")
+            
+            html = self.get_page(url)
+            soup = BeautifulSoup(html, 'html.parser')
+            
+            # 製品画像のURLを取得
+            main_image = None
+            carousel_box = soup.select_one(".carousel-box")
+            if carousel_box:
+                # メイン画像（class="main_img"を持つ要素）を探す
+                main_img_li = carousel_box.select_one("li.main_img")
+                if main_img_li:
+                    img_tag = main_img_li.select_one("img")
+                    if img_tag and 'src' in img_tag.attrs:
+                        main_image = img_tag['src']
+                
+                # メイン画像が見つからない場合は最初の画像を使用
+                if not main_image:
+                    first_img = carousel_box.select_one("ul.pict-list li img")
+                    if first_img and 'src' in first_img.attrs:
+                        main_image = first_img['src']
+            
+            # 画像が見つからない場合のフォールバック
+            if not main_image:
+                logger.warning(f"製品ID {product_id} の画像が見つかりません。")
+                
+            # ブランド情報を取得
+            brand_info = {}
+            brand_elem = soup.select_one("span.brd-name a.brand")
+            if brand_elem:
+                brand_name = brand_elem.text.strip()
+                brand_url = urljoin(self.BASE_URL, brand_elem.get('href', ''))
+                brand_info = {
+                    "brand": brand_name,
+                    "brand_url": brand_url
+                }
+            
+            # 製品名を取得
+            product_name = None
+            product_name_elem = soup.select_one("strong.pdct-name")
+            if product_name_elem:
+                product_name = product_name_elem.text.strip()
+                logger.info(f"製品名を取得: {product_name}")
+            
+            # 結果をマージ
+            result = {
+                "image_url": main_image,
+                "product_url": url,
+            }
+            
+            if brand_info:
+                result.update(brand_info)
+                
+            if product_name:
+                result["name"] = product_name
+                
+            return result
+            
+        except Exception as e:
+            logger.error(f"製品詳細取得エラー: {str(e)}")
+            return {}
+    
     def _parse_product_items(self, soup: BeautifulSoup) -> List[Dict[str, Any]]:
         """
         ランキングページからアイテム情報を抽出
@@ -92,7 +166,7 @@ class CosmeNetScraper:
         
         for item in items:
             try:
-                # 順位取得 (既存コード維持)
+                # 順位取得
                 rank_elem = item.select_one("span.rank-num")
                 if rank_elem:
                     if rank_elem.img:  # 1-3位はイメージタグ
@@ -102,7 +176,7 @@ class CosmeNetScraper:
                 else:
                     continue  # ランクがない場合はスキップ
                 
-                # 商品情報取得 (既存コード維持)
+                # 商品情報取得
                 product_a = item.select_one("h4.item a")
                 if not product_a:
                     continue
@@ -113,11 +187,12 @@ class CosmeNetScraper:
                 
                 logger.debug(f"製品基本情報: ID={product_id}, 名前={product_name}, ランク={rank}")
                 
-                # ブランド情報 (既存コード維持)
+                # ブランド情報
                 brand_a = item.select_one("span.brand a")
                 brand = brand_a.text.strip() if brand_a else "不明"
+                brand_url = urljoin(self.BASE_URL, brand_a.get('href', '')) if brand_a else None
                 
-                # カテゴリ情報取得 (修正: カテゴリの取得方法を強化)
+                # カテゴリ情報取得
                 category_links = item.select("span.category a")
                 categories = []
                 category_ids = []
@@ -146,35 +221,35 @@ class CosmeNetScraper:
                     else:
                         logger.warning(f"製品 ID={product_id} のカテゴリIDが抽出できませんでした: {cat_href}")
                 
-                # デバッグ: 最終的なカテゴリリスト
-                logger.debug(f"製品 ID={product_id} '{product_name}' のカテゴリ: {categories}")
-                logger.debug(f"製品 ID={product_id} '{product_name}' のカテゴリID: {category_ids}")
-                
-                # 残りの情報取得 (既存コード維持)
+                # 画像情報取得 (ランキングページの画像は小さいので、詳細ページを取得する)
                 img_elem = item.select_one("dd.pic img")
                 image_url = img_elem.get('src', '') if img_elem else ''
                 
+                # 価格情報
                 price_elem = item.select_one("p.price")
                 price_text = price_elem.text.strip() if price_elem else "不明"
                 
+                # 発売情報
                 release_elem = item.select_one("p.onsale")
                 release_text = release_elem.text.strip() if release_elem else ""
                 
+                # レビュー情報
                 rating_elem = item.select_one("span.reviewer-average")
                 rating = rating_elem.text.strip() if rating_elem else None
                 
                 votes_elem = item.select_one("p.votes span")
                 votes = int(votes_elem.text.replace(',', '')) if votes_elem else 0
                 
-                # 製品情報をdict化 (修正: category_idsを追加)
+                # 製品情報をdict化
                 product_data = {
                     "product_id": product_id,
                     "rank": rank,
                     "name": product_name,
                     "brand": brand,
+                    "brand_url": brand_url,
+                    "product_url": product_url,
                     "categories": categories,
-                    "category_ids": category_ids,  # カテゴリIDを保存
-                    "url": product_url,
+                    "category_ids": category_ids,
                     "image_url": image_url,
                     "price": price_text,
                     "release_date": release_text,
@@ -278,6 +353,19 @@ class CosmeNetScraper:
                 # チャンネル情報追加
                 product["channel"] = channel
                 product["genre"] = genre
+                
+                # 製品詳細ページから追加情報を取得
+                product_detail = self.get_product_detail(product_id)
+                if product_detail:
+                    # 高解像度の画像URLに更新
+                    if "image_url" in product_detail and product_detail["image_url"]:
+                        product["image_url"] = product_detail["image_url"]
+                    
+                    # 他の詳細情報も更新
+                    for key, value in product_detail.items():
+                        if key not in ["image_url"] and value:  # 画像URL以外の情報も更新
+                            product[key] = value
+                
                 filtered_products.append(product)
                 logger.info(f"該当製品: ID={product_id}, {product_name} ({product['brand']}), カテゴリ: {product['categories']}")
             else:
@@ -375,14 +463,15 @@ class CosmeNetScraper:
                 f"必要な製品数（{min_count}個）を収集できませんでした。"
                 f"現在: {len(collected_products)}個"
             )
-            
-            # 詳細なデバッグ情報を出力
             if collected_products:
                 logger.debug("最終収集製品リスト:")
                 for i, p in enumerate(collected_products, 1):
                     logger.debug(f"{i}. ID={p['product_id']}, {p['brand']} {p['name']}")
                     logger.debug(f"  カテゴリ: {p.get('categories', [])}")
                     logger.debug(f"  カテゴリID: {p.get('category_ids', [])}")
+                    logger.debug(f"  画像URL: {p.get('image_url', 'なし')}")
+                    logger.debug(f"  製品URL: {p.get('product_url', 'なし')}")
+                    logger.debug(f"  ブランドURL: {p.get('brand_url', 'なし')}")
                 
                 product_names = [f"{p['brand']} {p['name']}" for p in collected_products]
                 logger.info(f"収集された製品: {', '.join(product_names)}")

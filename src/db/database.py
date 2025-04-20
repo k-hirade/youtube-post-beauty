@@ -56,6 +56,8 @@ class CosmeDatabase:
                   name         TEXT,
                   brand        TEXT,
                   image_url    TEXT,
+                  product_url  TEXT,
+                  brand_url    TEXT,
                   scraped_rank INTEGER,
                   first_seen   DATETIME,
                   last_used    DATETIME
@@ -66,7 +68,8 @@ class CosmeDatabase:
                   channel      TEXT,
                   created_at   DATETIME,
                   status       TEXT,
-                  video_gs_uri TEXT
+                  video_gs_uri TEXT,
+                  error_details TEXT
                 );
                 CREATE TABLE IF NOT EXISTS review_cache (
                   product_id   TEXT PRIMARY KEY,
@@ -114,7 +117,7 @@ class CosmeDatabase:
                     """
                     UPDATE products
                     SET genre = ?, channel = ?, name = ?, brand = ?,
-                        image_url = ?, scraped_rank = ?
+                        image_url = ?, product_url = ?, brand_url = ?, scraped_rank = ?
                     WHERE product_id = ?
                     """,
                     (
@@ -123,6 +126,8 @@ class CosmeDatabase:
                         product["name"],
                         product["brand"],
                         product["image_url"],
+                        product.get("product_url", ""),  # 新しく追加されたフィールド
+                        product.get("brand_url", ""),    # 新しく追加されたフィールド
                         product["rank"],
                         product["product_id"]
                     )
@@ -133,8 +138,8 @@ class CosmeDatabase:
                     """
                     INSERT INTO products (
                         product_id, genre, channel, name, brand,
-                        image_url, scraped_rank, first_seen
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        image_url, product_url, brand_url, scraped_rank, first_seen
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         product["product_id"],
@@ -143,6 +148,8 @@ class CosmeDatabase:
                         product["name"],
                         product["brand"],
                         product["image_url"],
+                        product.get("product_url", ""),  # 新しく追加されたフィールド
+                        product.get("brand_url", ""),    # 新しく追加されたフィールド
                         product["rank"],
                         now
                     )

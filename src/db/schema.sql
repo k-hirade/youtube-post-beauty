@@ -9,6 +9,8 @@ CREATE TABLE IF NOT EXISTS products (
   name          TEXT,              -- 製品名
   brand         TEXT,              -- ブランド名
   image_url     TEXT,              -- 製品画像URL
+  product_url   TEXT,              -- 製品詳細ページURL
+  brand_url     TEXT,              -- ブランド詳細ページURL
   scraped_rank  INTEGER,           -- スクレイピング時の順位
   first_seen    DATETIME,          -- 最初に見つけた日時
   last_used     DATETIME           -- 最後に使用した日時
