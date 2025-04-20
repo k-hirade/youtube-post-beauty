@@ -54,8 +54,8 @@ def parse_args():
     """コマンドライン引数のパース"""
     parser = argparse.ArgumentParser(description='アットコスメランキングからショート動画を自動生成')
     
-    parser.add_argument('--channel', type=str, default='スーパー・ドラッグストア',
-                        choices=['スーパー・ドラッグストア'],
+    parser.add_argument('--channel', type=str, default='スーパー',
+                        choices=['スーパー'],
                         help='購入場所チャンネル')
     
     parser.add_argument('--genre', type=str, default='乳液',

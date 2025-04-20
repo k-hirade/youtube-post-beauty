@@ -31,7 +31,7 @@ class CosmeNetScraper:
     }
     
     CHANNEL_MAP = {
-        "スーパー・ドラッグストア": "2",
+        "スーパー": "2",
     }
     
     def __init__(self, rate_limit: float = 1.0):

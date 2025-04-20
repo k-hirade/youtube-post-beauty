@@ -175,8 +175,8 @@ def main():
     run_parser.add_argument('--genre', type=str, default='化粧水', 
                           choices=['化粧水', '乳液', '美容液', 'パック'],
                           help='対象ジャンル')
-    run_parser.add_argument('--channel', type=str, default='スーパー・ドラッグストア',
-                          choices=['スーパー・ドラッグストア'],
+    run_parser.add_argument('--channel', type=str, default='スーパー',
+                          choices=['スーパー'],
                           help='チャンネル（購入場所）')
     run_parser.add_argument('--dry-run', action='store_true',
                           help='ドライラン（動画作成なし）')

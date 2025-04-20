@@ -459,6 +459,273 @@ class VideoMaker:
             logger.error(f"画像処理エラー: {str(e)}")
         
         return img
+    
+    def _create_improved_intro_slide(self, title: str) -> Image.Image:
+        """
+        アイキャッチとなる魅力的なイントロスライドを作成
+        カンマ位置で改行するように修正
+        
+        Args:
+            title: 動画タイトル（例: "薬局で買える神商品"）
+            
+        Returns:
+            Image.Image: イントロスライド画像
+        """
+        # 背景画像を作成（濃い青みがかった黒背景）
+        img = Image.new('RGB', (self.VIDEO_WIDTH, self.VIDEO_HEIGHT), (15, 15, 35))
+        draw = ImageDraw.Draw(img)
+        
+        # フォント設定
+        # 基本フォントサイズ - 以下のサイズは見栄えを調整
+        ichido_font = self.get_font(100, self.noto_sans_jp_bold_path)
+        maji_font = self.get_font(120, self.noto_sans_jp_bold_path)
+        tsukatte_font = self.get_font(120, self.noto_sans_jp_bold_path)
+        mite_font = self.get_font(120, self.noto_sans_jp_bold_path)
+        hoshii_font = self.get_font(120, self.noto_sans_jp_bold_path)
+        yakkyoku_font = self.get_font(120, self.noto_sans_jp_bold_path)
+        shinshohin_font = self.get_font(140, self.noto_sans_jp_bold_path)
+        agete_font = self.get_font(70, self.noto_sans_jp_bold_path)
+        footnote_font = self.get_font(50, self.noto_sans_jp_bold_path)
+        
+        # タイトルからチャンネルとジャンルを抽出
+        channel = ""
+        genre = ""
+        if "で買える" in title:
+            channel = title.split('で買える')[0]
+            genre = title.split('で買える')[-1].replace('ランキング', '').strip()
+            genre = genre.replace('7選！', '')
+        
+        # テキストを区切り位置で分割
+        ichido_text = "一度は"
+        maji_text = "マジで"
+        tsukatte_text = "使ってみて"
+        hoshii_text = "欲しい"
+        yakkyoku_text = f"{channel}で買える"
+        shinshohin_text = f"{genre}神商品"
+        agete_text = "挙げてくw"
+        footnote_text = "※これはブックマーク必須やで"
+        
+        # 各行のY位置を設定（間隔調整）
+        y_start = self.VIDEO_HEIGHT * 0.07  # 上部スタート位置
+        line_spacing = 120                   # 行間
+        
+        # 各行のY位置を計算
+        y_positions = [
+            y_start,                    # "一度は"
+            y_start + line_spacing,     # "マジで"
+            y_start + line_spacing*2,   # "使ってみて"
+            y_start + line_spacing*3,   # "欲しい"
+            y_start + line_spacing*4.5, # "{場所}で買える"（少し間隔を空ける）
+            y_start + line_spacing*5.5, # "神商品"（少し間隔を空ける）
+            y_start + line_spacing*7,   # "挙げてくw"
+            y_start + line_spacing*8,   # "※これはブックマーク必須やで"
+        ]
+        
+        # ---- 「一度は」テキストの描画 ----
+        ichido_width = self.calculate_text_width(ichido_text, ichido_font, draw)
+        ichido_x = (self.VIDEO_WIDTH - ichido_width) // 2
+        
+        # 白色テキストに黒の太い縁取り
+        self.apply_text_outline(
+            draw=draw,
+            text=ichido_text,
+            x=ichido_x,
+            y=y_positions[0],
+            font=ichido_font,
+            text_color=(255, 255, 255),  # 白色
+            outline_color=(0, 0, 0),     # 黒色
+            outline_width=12             # 太い縁取り
+        )
+        
+        # ---- 「マジで」テキストの描画 ----
+        maji_width = self.calculate_text_width(maji_text, maji_font, draw)
+        maji_x = (self.VIDEO_WIDTH - maji_width) // 2
+        
+        # 二重縁取りで高級感を演出（赤系テキスト）
+        # 1. まず黒い外側の縁取り
+        self.apply_text_outline(
+            draw=draw,
+            text=maji_text,
+            x=maji_x,
+            y=y_positions[1],
+            font=maji_font,
+            text_color=(0, 0, 0, 0),     # 透明（後で上書き）
+            outline_color=(0, 0, 0),     # 黒色
+            outline_width=12             # 太い外側縁取り
+        )
+        
+        # 2. 次に白い内側の縁取り
+        self.apply_text_outline(
+            draw=draw,
+            text=maji_text,
+            x=maji_x,
+            y=y_positions[1],
+            font=maji_font,
+            text_color=(0, 0, 0, 0),      # 透明（後で上書き）
+            outline_color=(255, 255, 255), # 白色
+            outline_width=6                # 中程度の内側縁取り
+        )
+        
+        # 3. 最後に赤系テキスト本体
+        draw.text(
+            (maji_x, y_positions[1]),
+            maji_text,
+            font=maji_font,
+            fill=(181, 46, 46)  # B52E2E（やや暗い赤）
+        )
+        
+        # ---- 「使ってみて」テキストの描画 ----
+        tsukatte_width = self.calculate_text_width(tsukatte_text, tsukatte_font, draw)
+        tsukatte_x = (self.VIDEO_WIDTH - tsukatte_width) // 2
+        
+        # 同じ赤系テキストスタイルを適用
+        # 1. まず黒い外側の縁取り
+        self.apply_text_outline(
+            draw=draw,
+            text=tsukatte_text,
+            x=tsukatte_x,
+            y=y_positions[2],
+            font=tsukatte_font,
+            text_color=(0, 0, 0, 0),     # 透明（後で上書き）
+            outline_color=(0, 0, 0),     # 黒色
+            outline_width=12             # 太い外側縁取り
+        )
+        
+        # 2. 次に白い内側の縁取り
+        self.apply_text_outline(
+            draw=draw,
+            text=tsukatte_text,
+            x=tsukatte_x,
+            y=y_positions[2],
+            font=tsukatte_font,
+            text_color=(0, 0, 0, 0),      # 透明（後で上書き）
+            outline_color=(255, 255, 255), # 白色
+            outline_width=6                # 中程度の内側縁取り
+        )
+        
+        # 3. 最後に赤系テキスト本体
+        draw.text(
+            (tsukatte_x, y_positions[2]),
+            tsukatte_text,
+            font=tsukatte_font,
+            fill=(181, 46, 46)  # B52E2E（やや暗い赤）
+        )
+        
+        # ---- 「欲しい」テキストの描画 ----
+        hoshii_width = self.calculate_text_width(hoshii_text, hoshii_font, draw)
+        hoshii_x = (self.VIDEO_WIDTH - hoshii_width) // 2
+        
+        # 同じ赤系テキストスタイルを適用
+        # 1. まず黒い外側の縁取り
+        self.apply_text_outline(
+            draw=draw,
+            text=hoshii_text,
+            x=hoshii_x,
+            y=y_positions[3],
+            font=hoshii_font,
+            text_color=(0, 0, 0, 0),     # 透明（後で上書き）
+            outline_color=(0, 0, 0),     # 黒色
+            outline_width=12             # 太い外側縁取り
+        )
+        
+        # 2. 次に白い内側の縁取り
+        self.apply_text_outline(
+            draw=draw,
+            text=hoshii_text,
+            x=hoshii_x,
+            y=y_positions[3],
+            font=hoshii_font,
+            text_color=(0, 0, 0, 0),      # 透明（後で上書き）
+            outline_color=(255, 255, 255), # 白色
+            outline_width=6                # 中程度の内側縁取り
+        )
+        
+        # 3. 最後に赤系テキスト本体
+        draw.text(
+            (hoshii_x, y_positions[3]),
+            hoshii_text,
+            font=hoshii_font,
+            fill=(181, 46, 46)  # B52E2E（やや暗い赤）
+        )
+        
+        # ---- 「薬局で買える」テキストの描画 ----
+        yakkyoku_width = self.calculate_text_width(yakkyoku_text, yakkyoku_font, draw)
+        yakkyoku_x = (self.VIDEO_WIDTH - yakkyoku_width) // 2
+        
+        # 金色系テキストに黒の太い縁取り
+        self.apply_text_outline(
+            draw=draw,
+            text=yakkyoku_text,
+            x=yakkyoku_x,
+            y=y_positions[4],
+            font=yakkyoku_font,
+            text_color=(255, 216, 74),  # FFD84A（金色）
+            outline_color=(0, 0, 0),     # 黒色
+            outline_width=12            # 太い縁取り
+        )
+        
+        # ---- 「神商品」テキストの描画 ----
+        shinshohin_width = self.calculate_text_width(shinshohin_text, shinshohin_font, draw)
+        shinshohin_x = (self.VIDEO_WIDTH - shinshohin_width) // 2
+        
+        # 金色系テキストに黒の太い縁取り（「神商品」はより大きく）
+        self.apply_text_outline(
+            draw=draw,
+            text=shinshohin_text,
+            x=shinshohin_x,
+            y=y_positions[5],
+            font=shinshohin_font,
+            text_color=(255, 230, 100),  # より鮮やかな金色
+            outline_color=(0, 0, 0),      # 黒色
+            outline_width=14             # より太い縁取り
+        )
+        
+        # ---- 「挙げてくw」テキストの描画 ----
+        agete_width = self.calculate_text_width(agete_text, agete_font, draw)
+        agete_x = (self.VIDEO_WIDTH - agete_width) // 2
+        
+        # 白色テキストに黒の縁取り
+        self.apply_text_outline(
+            draw=draw,
+            text=agete_text,
+            x=agete_x,
+            y=y_positions[6],
+            font=agete_font,
+            text_color=(255, 255, 255),  # 白色
+            outline_color=(0, 0, 0),      # 黒色
+            outline_width=8              # 太めの縁取り
+        )
+        
+        # ---- 「※これはブックマーク必須やで」テキストの描画 ----
+        footnote_width = self.calculate_text_width(footnote_text, footnote_font, draw)
+        footnote_x = (self.VIDEO_WIDTH - footnote_width) // 2
+        
+        # 赤系テキストに黄色の外部グロー風エフェクト
+        # 1. まず黄色の外側グロー（一番外側）
+        self.apply_text_outline(
+            draw=draw,
+            text=footnote_text,
+            x=footnote_x,
+            y=y_positions[7],
+            font=footnote_font,
+            text_color=(0, 0, 0, 0),      # 透明（後で上書き）
+            outline_color=(255, 226, 82),  # 黄色
+            outline_width=8               # 太めのグロー効果
+        )
+        
+        # 2. 次に赤系テキスト本体を重ねて描画
+        self.apply_text_outline(
+            draw=draw,
+            text=footnote_text,
+            x=footnote_x,
+            y=y_positions[7],
+            font=footnote_font,
+            text_color=(232, 74, 74),     # E84A4A（赤）
+            outline_color=(158, 0, 0),     # 9E0000（暗い赤）
+            outline_width=3               # 細めの縁取り
+        )
+        
+        return img
 
     def _create_review_comment_slide(
         self,
@@ -867,40 +1134,8 @@ class VideoMaker:
                     channel = title.split('で買える')[0] if 'で買える' in title else ""
                     genre = title.split('で買える')[-1].replace('ランキング', '').strip() if 'で買える' in title else ""
                     intro_title = f"{channel}で買える{genre}7選！"
-                
-                # イントロスライド画像作成（黒色の背景）
-                intro_img = Image.new('RGB', (self.VIDEO_WIDTH, self.VIDEO_HEIGHT), self.BG_COLOR)
-                draw = ImageDraw.Draw(intro_img)
-                
-                title_font = self.get_font(self.TITLE_FONT_SIZE * 1.5, self.noto_sans_jp_bold_path)
-                title_width = self.calculate_text_width(intro_title, title_font, draw)
-                title_x = (self.VIDEO_WIDTH - title_width) // 2
-                title_y = self.VIDEO_HEIGHT // 2 - self.TITLE_FONT_SIZE
-                
-                # タイトルの背景（白色の四角形）
-                title_padding = 30
-                title_bg_width = title_width + title_padding * 2
-                title_bg_height = self.TITLE_FONT_SIZE * 1.5 + title_padding * 2
-                
-                # 背景の四角形を描画
-                draw.rectangle(
-                    [(title_x - title_padding, title_y - title_padding), 
-                    (title_x + title_width + title_padding, title_y + title_bg_height)],
-                    fill=self.TEXT_BG_COLOR  # 白色背景
-                )
-                
-                # タイトルテキストを描画
-                self.apply_text_outline(
-                    draw=draw,
-                    text=intro_title,
-                    x=title_x,
-                    y=title_y,
-                    font=title_font,
-                    text_color=self.TITLE_COLOR,
-                    outline_color=self.SHADOW_COLOR,
-                    outline_width=3
-                )
-                
+
+                intro_img = self._create_improved_intro_slide(intro_title)
                 intro_slide_path = os.path.join(temp_dir, "intro_slide.png")
                 intro_img.save(intro_slide_path)
                 
