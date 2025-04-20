@@ -727,146 +727,6 @@ class VideoMaker:
         
         return img
 
-    def _create_review_comment_slide(
-        self,
-        product: Dict[str, Any],
-        rank: int,
-        comment: str,
-        comment_position: str = "top",  # "top", "middle", "bottom"
-        comment_index: int = 0  # 0, 1, 2 (コメントのインデックス)
-    ) -> Image.Image:
-        """
-        レビューコメント付きの製品スライドを作成
-        
-        Args:
-            product: 製品情報
-            rank: 順位
-            comment: コメントテキスト
-            comment_position: コメントの位置
-            comment_index: コメントのインデックス（色分け用）
-            
-        Returns:
-            Image.Image: レビューコメント付き製品スライド
-        """
-        # 製品スライドを基本として作成し、その上にコメントを追加する
-        img = self._create_product_slide(product, rank)
-        draw = ImageDraw.Draw(img)
-        
-        # フォント設定
-        comment_font = self.get_font(self.REVIEW_FONT_SIZE, self.noto_sans_jp_path)
-        
-        # コメントを四角で囲んで表示
-        comment_text = f"「{comment}」"
-        comment_width = self.calculate_text_width(comment_text, comment_font, draw)
-        
-        # コメントインデックスに応じて色を設定
-        if comment_index == 0:
-            border_color = (255, 50, 50)  # 赤色
-        elif comment_index == 1:
-            border_color = (50, 255, 50)  # 緑色
-        else:
-            border_color = (50, 50, 255)  # 青色
-        
-        # コメントが長い場合は折り返し
-        max_width = int(self.VIDEO_WIDTH * 0.8)
-        if comment_width > max_width:
-            # 適当な位置で折り返し
-            words = list(comment_text)
-            lines = []
-            current_line = ""
-            
-            for word in words:
-                test_line = current_line + word
-                test_width = self.calculate_text_width(test_line, comment_font, draw)
-                
-                if test_width <= max_width:
-                    current_line = test_line
-                else:
-                    lines.append(current_line)
-                    current_line = word
-            
-            if current_line:
-                lines.append(current_line)
-            
-            # 複数行のコメントを描画
-            line_height = int(self.REVIEW_FONT_SIZE * 1.5)
-            comment_height = line_height * len(lines)
-            
-            # コメント位置の決定
-            if comment_position == "top":
-                # 上部に表示（画面上部から10%の位置）
-                comment_y = int(self.VIDEO_HEIGHT * 0.1)
-            elif comment_position == "middle":
-                # 中央に表示（画面の中央）
-                comment_y = int(self.VIDEO_HEIGHT * 0.5) - (comment_height // 2)
-            else:  # bottom
-                # 下部に表示（画面下部から10%上の位置）
-                comment_y = int(self.VIDEO_HEIGHT * 0.9) - comment_height
-            
-            # 背景の四角を描画
-            padding = 20
-            box_top = comment_y - padding
-            box_bottom = comment_y + comment_height + padding
-            box_left = (self.VIDEO_WIDTH - max_width) // 2 - padding
-            box_right = (self.VIDEO_WIDTH + max_width) // 2 + padding
-            
-            draw.rectangle(
-                [(box_left, box_top), (box_right, box_bottom)],
-                fill=(0, 0, 0, 128),  # 半透明黒
-                outline=border_color,  # インデックスに応じた色の枠
-                width=5  # 太い枠線
-            )
-            
-            # 各行を描画
-            for i, line in enumerate(lines):
-                line_y = comment_y + i * line_height
-                line_width = self.calculate_text_width(line, comment_font, draw)
-                line_x = (self.VIDEO_WIDTH - line_width) // 2
-                
-                draw.text(
-                    (line_x, line_y),
-                    line,
-                    font=comment_font,
-                    fill=self.TEXT_COLOR
-                )
-        else:
-            # 1行のコメント
-            # コメント位置の決定
-            if comment_position == "top":
-                # 上部に表示（画面上部から10%の位置）
-                comment_y = int(self.VIDEO_HEIGHT * 0.1)
-            elif comment_position == "middle":
-                # 中央に表示（画面の中央）
-                comment_y = int(self.VIDEO_HEIGHT * 0.5) - (self.REVIEW_FONT_SIZE // 2)
-            else:  # bottom
-                # 下部に表示（画面下部から10%上の位置）
-                comment_y = int(self.VIDEO_HEIGHT * 0.9) - self.REVIEW_FONT_SIZE
-            
-            comment_x = (self.VIDEO_WIDTH - comment_width) // 2
-            
-            # 背景の四角を描画
-            padding = 20
-            box_width = comment_width + padding * 2
-            box_height = self.REVIEW_FONT_SIZE + padding * 2
-            
-            draw.rectangle(
-                [(comment_x - padding, comment_y - padding), 
-                (comment_x + comment_width + padding, comment_y + box_height - padding)],
-                fill=(0, 0, 0, 128),  # 半透明黒
-                outline=border_color,  # インデックスに応じた色の枠
-                width=5  # 太い枠線
-            )
-            
-            # コメントを描画
-            draw.text(
-                (comment_x, comment_y),
-                comment_text,
-                font=comment_font,
-                fill=self.TEXT_COLOR
-            )
-        
-        return img
-
     def _add_comment_to_slide(
         self,
         base_slide: Image.Image,
@@ -878,6 +738,7 @@ class VideoMaker:
     ) -> Image.Image:
         """
         既存のスライドにコメントを追加する（商品名とブランド名を削除）
+        参考画像のようなデザインに改良
         
         Args:
             base_slide: ベースとなるスライド画像
@@ -894,7 +755,7 @@ class VideoMaker:
         slide = base_slide.copy()
         draw = ImageDraw.Draw(slide)
         
-        # 商品名の位置情報
+        # 商品名の位置情報（上書き用）
         name_y = 250  # _create_product_slide と同じ値
         name_font = self.get_font(self.TITLE_FONT_SIZE, self.noto_sans_jp_bold_path)
         product_name = product.get('name', 'No Name')
@@ -913,7 +774,7 @@ class VideoMaker:
             fill=self.BG_COLOR  # 黒色背景で上書き
         )
         
-        # ブランド名の位置情報
+        # ブランド名の位置情報（上書き用）
         brand_y = name_y + self.TITLE_FONT_SIZE + 20  # _create_product_slide と同じ値
         brand_font = self.get_font(self.BRAND_FONT_SIZE, self.noto_sans_jp_path)
         brand_name = product.get('brand', 'No Brand')
@@ -933,64 +794,59 @@ class VideoMaker:
         )
         
         # ランク表示は残す（消去された場合に備えて再描画）
-        rank_font = self.get_font(self.TITLE_FONT_SIZE * 1.3, self.noto_sans_jp_bold_path)
-        rank_text = f"{rank}位"
+        rank_font = self.get_font(self.TITLE_FONT_SIZE * 1.7, self.noto_sans_jp_bold_path)  # ランクを少し大きく
+        rank_text = f"第{rank}位"  # "第"を追加
         rank_width = self.calculate_text_width(rank_text, rank_font, draw)
         rank_x = (self.VIDEO_WIDTH - rank_width) // 2  # 中央揃え
         rank_y = 50
         
-        # 順位表示の背景（白色の四角形）
-        rank_padding = 20
-        rank_bg_width = rank_width + rank_padding * 2
-        rank_bg_height = self.TITLE_FONT_SIZE * 1.3 + rank_padding
-        
-        # 背景の四角形を描画
-        draw.rectangle(
-            [(rank_x - rank_padding, rank_y - rank_padding // 2), 
-            (rank_x + rank_width + rank_padding, rank_y + rank_bg_height)],
-            fill=self.TEXT_BG_COLOR  # 白色背景
-        )
-        
-        # 順位テキストを描画
+        # ランク表示のスタイル変更（背景なし、白文字に黒の太い縁取り）
         self.apply_text_outline(
             draw=draw,
             text=rank_text,
             x=rank_x,
             y=rank_y,
             font=rank_font,
-            text_color=self.RANK_COLOR,
-            outline_color=self.SHADOW_COLOR,
-            outline_width=2
+            text_color=(255, 255, 255),  # 白色
+            outline_color=(0, 0, 0),      # 黒色
+            outline_width=10              # 太い縁取り
         )
         
         # フォント設定
-        comment_font = self.get_font(self.REVIEW_FONT_SIZE, self.noto_sans_jp_path)
+        # 画像を参考に、より太くて大きいフォントを使用
+        try:
+            comment_font = ImageFont.truetype("rounded-mplus-1c-extrabold.ttf", self.REVIEW_FONT_SIZE + 12)
+        except:
+            # フォントが見つからない場合は代替フォント
+            comment_font = self.get_font(self.REVIEW_FONT_SIZE + 12, self.noto_sans_jp_bold_path)
         
-        # コメントを「」で囲む
-        comment_text = f"{comment}"
-        comment_width = self.calculate_text_width(comment_text, comment_font, draw)
-        
-        # コメントインデックスに応じて色を設定
+        # コメントインデックスに応じて色を設定（参考画像に合わせる）
         if comment_index == 0:
-            border_color = (255, 50, 50)  # 赤色
+            box_bg_color = (255, 255, 255)  # 白背景
+            border_color = (255, 50, 50)    # 赤枠
         elif comment_index == 1:
-            border_color = (50, 255, 50)  # 緑色
+            box_bg_color = (255, 255, 255)  # 白背景
+            border_color = (50, 255, 50)    # 緑枠
         else:
-            border_color = (50, 50, 255)  # 青色
+            box_bg_color = (255, 255, 255)  # 白背景
+            border_color = (50, 50, 255)    # 青枠
         
         # コメント位置の決定
-        if comment_position == "top":
-            # 上部に表示（画面上部から25%の位置）
-            y_pos = int(self.VIDEO_HEIGHT * 0.25)
-        elif comment_position == "middle":
-            # 中央に表示（画面の中央）
-            y_pos = int(self.VIDEO_HEIGHT * 0.5)
-        else:  # bottom
-            # 下部に表示（画面下部から25%上の位置）
-            y_pos = int(self.VIDEO_HEIGHT * 0.75)
+        y_pos_mapping = {
+            "top": int(self.VIDEO_HEIGHT * 0.25),      # 上部
+            "middle": int(self.VIDEO_HEIGHT * 0.45),   # 中央（少し上に）
+            "bottom": int(self.VIDEO_HEIGHT * 0.65)    # 下部（少し上に）
+        }
+        y_pos = y_pos_mapping[comment_position]
+        
+        # コメント幅の設定（画面の85%）
+        max_width = int(self.VIDEO_WIDTH * 0.85)
+        
+        # 改行を削除してフラットなテキストに
+        comment_text = comment.replace("\n", " ").strip()
+        comment_width = self.calculate_text_width(comment_text, comment_font, draw)
         
         # コメントが長い場合は折り返し
-        max_width = int(self.VIDEO_WIDTH * 0.8)
         if comment_width > max_width:
             # 適当な位置で折り返し
             words = list(comment_text)
@@ -1011,32 +867,35 @@ class VideoMaker:
                 lines.append(current_line)
             
             # 複数行のコメントを描画
-            line_height = int(self.REVIEW_FONT_SIZE * 1.5)
+            line_height = int(self.REVIEW_FONT_SIZE * 1.6)  # 行間を少し広く
             comment_height = line_height * len(lines)
             
             # コメント位置の調整（中央揃え）
-            if comment_position == "top":
-                comment_y = y_pos
-            elif comment_position == "middle":
-                comment_y = y_pos - comment_height // 2
-            else:  # bottom
-                comment_y = y_pos - comment_height
+            comment_y = y_pos - comment_height // 2
             
-            # 背景の四角を描画
-            padding = 20
-            box_top = comment_y - padding
-            box_bottom = comment_y + comment_height + padding
-            box_left = (self.VIDEO_WIDTH - max_width) // 2 - padding
-            box_right = (self.VIDEO_WIDTH + max_width) // 2 + padding
+            # 背景の四角を描画（参考画像に合わせて白背景に色付き枠線）
+            padding_v = 15  # 上下のパディング
+            padding_h = 25  # 左右のパディング
+            box_top = comment_y - padding_v
+            box_bottom = comment_y + comment_height + padding_v
+            box_left = (self.VIDEO_WIDTH - max_width) // 2 - padding_h
+            box_right = (self.VIDEO_WIDTH + max_width) // 2 + padding_h
             
+            # 1. まず白い背景を描画
             draw.rectangle(
                 [(box_left, box_top), (box_right, box_bottom)],
-                fill=self.TEXT_BG_COLOR,  # 白色背景
-                outline=border_color,
-                width=5
+                fill=box_bg_color
             )
             
-            # 各行を描画
+            # 2. 次に色付きの枠線を描画（枠線の幅を5pxに設定）
+            border_width = 5
+            for i in range(border_width):
+                draw.rectangle(
+                    [(box_left + i, box_top + i), (box_right - i, box_bottom - i)],
+                    outline=border_color
+                )
+            
+            # 各行を描画（黒色テキスト）
             for i, line in enumerate(lines):
                 line_y = comment_y + i * line_height
                 line_width = self.calculate_text_width(line, comment_font, draw)
@@ -1046,39 +905,44 @@ class VideoMaker:
                     (line_x, line_y),
                     line,
                     font=comment_font,
-                    fill=self.TEXT_COLOR
+                    fill=(0, 0, 0)  # 黒テキスト
                 )
         else:
             # 1行のコメント
-            # コメント位置の調整（中央揃え）
-            if comment_position == "top":
-                comment_y = y_pos
-            elif comment_position == "middle":
-                comment_y = y_pos - self.REVIEW_FONT_SIZE // 2
-            else:  # bottom
-                comment_y = y_pos - self.REVIEW_FONT_SIZE
-            
+            comment_y = y_pos - self.REVIEW_FONT_SIZE // 2
             comment_x = (self.VIDEO_WIDTH - comment_width) // 2
             
-            # 背景の四角を描画
-            padding = 20
-            box_width = comment_width + padding * 2
-            box_height = self.REVIEW_FONT_SIZE + padding * 2
+            # 背景の四角を描画（参考画像に合わせて白背景に色付き枠線）
+            padding_v = 15  # 上下のパディング
+            padding_h = 25  # 左右のパディング
+            box_width = comment_width + padding_h * 2
+            box_height = self.REVIEW_FONT_SIZE + padding_v * 2
             
+            box_left = comment_x - padding_h
+            box_right = comment_x + comment_width + padding_h
+            box_top = comment_y - padding_v
+            box_bottom = comment_y + box_height - padding_v
+            
+            # 1. まず白い背景を描画
             draw.rectangle(
-                [(comment_x - padding, comment_y - padding), 
-                (comment_x + comment_width + padding, comment_y + box_height - padding)],
-                fill=self.TEXT_BG_COLOR,  # 白色背景
-                outline=border_color,
-                width=5
+                [(box_left, box_top), (box_right, box_bottom)],
+                fill=box_bg_color
             )
             
-            # コメントを描画
+            # 2. 次に色付きの枠線を描画（枠線の幅を5pxに設定）
+            border_width = 5
+            for i in range(border_width):
+                draw.rectangle(
+                    [(box_left + i, box_top + i), (box_right - i, box_bottom - i)],
+                    outline=border_color
+                )
+            
+            # コメントを描画（黒色テキスト）
             draw.text(
                 (comment_x, comment_y),
                 comment_text,
                 font=comment_font,
-                fill=self.TEXT_COLOR
+                fill=(0, 0, 0)  # 黒テキスト
             )
         
         return slide
@@ -1326,11 +1190,10 @@ class VideoMaker:
                             comment_position = positions[i % len(positions)]
                             
                             # コメントを累積スライドに追加
-                            comment_font = self.get_font(self.REVIEW_FONT_SIZE, self.noto_sans_jp_path)
+                            comment_font = self.get_font(self.REVIEW_FONT_SIZE+ 15, self.noto_sans_jp_path)
                             draw = ImageDraw.Draw(accumulated_slide)
                             
-                            # コメントテキストを「」で囲む
-                            comment_text = f"「{review}」"
+                            comment_text = f"{review}"
                             comment_width = self.calculate_text_width(comment_text, comment_font, draw)
                             
                             # コメントインデックスに応じて色を設定
@@ -1350,7 +1213,7 @@ class VideoMaker:
                                 y_pos = int(self.VIDEO_HEIGHT * 0.75)
                             
                             # コメント描画（長い場合は折り返し）
-                            max_width = int(self.VIDEO_WIDTH * 0.7)
+                            max_width = int(self.VIDEO_WIDTH * 0.8)
                             if comment_width > max_width:
                                 # 折り返し処理
                                 words = list(comment_text)
@@ -1382,7 +1245,7 @@ class VideoMaker:
                                     comment_y = y_pos - comment_height
                                 
                                 # 背景の四角を描画
-                                padding = 20
+                                padding = 25
                                 box_top = comment_y - padding
                                 box_bottom = comment_y + comment_height + padding
                                 box_left = (self.VIDEO_WIDTH - max_width) // 2 - padding
