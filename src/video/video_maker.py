@@ -948,139 +948,84 @@ class VideoMaker:
         return slide
     
     def create_video(
-        self,
-        products: List[Dict[str, Any]],
-        title: str,
-        output_filename: Optional[str] = None
-    ) -> str:
-        """
-        製品リストからショート動画を作成（コメントを順番に表示するように修正）
-        
-        Args:
-            products: 製品情報リスト
-            title: 動画タイトル
-            output_filename: 出力ファイル名
-        
-        Returns:
-            str: 作成した動画のパス
-        """
-        logger.info(f"動画作成開始: {title}")
-        
-        # 出力ファイル名が指定されていない場合は生成
-        if not output_filename:
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            safe_title = ''.join(c if c.isalnum() else '_' for c in title)
-            output_filename = f"{safe_title}_{timestamp}.mp4"
-        
-        output_path = os.path.join(self.output_dir, output_filename)
-        
-        # 製品リストをシャッフルして順位を割り当て
-        shuffled_products = random.sample(products, len(products))
-        shuffled_products = shuffled_products[:7]
-        for i, product in enumerate(shuffled_products):
-            product['new_rank'] = i + 1  # 1位から順に割り当て
-        
-        try:
-            # 一時ディレクトリを作成
-            with tempfile.TemporaryDirectory() as temp_dir:
-                # 動画セグメントのパスリスト
-                video_segments = []
-                
-                # イントロスライド作成
-                intro_title = None
-                for product in shuffled_products:
-                    if 'channel' in product and 'genre' in product:
-                        intro_title = f"{product['channel']}で買える{product['genre']}7選！"
-                        break
-                
-                if not intro_title:
-                    # main.pyからタイトルを構築
-                    channel = title.split('で買える')[0] if 'で買える' in title else ""
-                    genre = title.split('で買える')[-1].replace('ランキング', '').strip() if 'で買える' in title else ""
-                    intro_title = f"{channel}で買える{genre}7選！"
+            self,
+            products: List[Dict[str, Any]],
+            title: str,
+            output_filename: Optional[str] = None
+        ) -> str:
+            """
+            製品リストからショート動画を作成（BGM追加機能対応）
+            
+            Args:
+                products: 製品情報リスト
+                title: 動画タイトル
+                output_filename: 出力ファイル名
+            
+            Returns:
+                str: 作成した動画のパス
+            """
+            logger.info(f"動画作成開始: {title}")
+            
+            # 出力ファイル名が指定されていない場合は生成
+            if not output_filename:
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                safe_title = ''.join(c if c.isalnum() else '_' for c in title)
+                output_filename = f"{safe_title}_{timestamp}.mp4"
+            
+            output_path = os.path.join(self.output_dir, output_filename)
+            
+            # 製品リストをシャッフルして順位を割り当て
+            shuffled_products = random.sample(products, len(products))
+            shuffled_products = shuffled_products[:7]
+            for i, product in enumerate(shuffled_products):
+                product['new_rank'] = i + 1  # 1位から順に割り当て
+            
+            try:
+                # 一時ディレクトリを作成
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    # 動画セグメントのパスリスト
+                    video_segments = []
+                    
+                    # イントロスライド作成
+                    intro_title = None
+                    for product in shuffled_products:
+                        if 'channel' in product and 'genre' in product:
+                            intro_title = f"{product['channel']}で買える{product['genre']}7選！"
+                            break
+                    
+                    if not intro_title:
+                        # main.pyからタイトルを構築
+                        channel = title.split('で買える')[0] if 'で買える' in title else ""
+                        genre = title.split('で買える')[-1].replace('ランキング', '').strip() if 'で買える' in title else ""
+                        intro_title = f"{channel}で買える{genre}7選！"
 
-                intro_img = self._create_improved_intro_slide(intro_title)
-                intro_slide_path = os.path.join(temp_dir, "intro_slide.png")
-                intro_img.save(intro_slide_path)
-                
-                # イントロ音声生成
-                intro_audio_path = os.path.join(temp_dir, "intro_audio.wav")
-                intro_success = generate_narration(intro_title, intro_audio_path, "random")
-                
-                # イントロ動画セグメント作成
-                intro_video_path = os.path.join(temp_dir, "intro_video.mp4")
-                
-                # ナレーション音声があれば使用、なければ3秒間の無音
-                if os.path.exists(intro_audio_path) and os.path.getsize(intro_audio_path) > 100:
-                    audio_duration = get_audio_duration(intro_audio_path)
-                    display_duration = max(audio_duration + 1.0, 3.0)  # 少し余裕を持たせる
-                else:
-                    logger.warning(f"イントロの音声ファイルが存在しないか無効です。無音を使用します。")
-                    display_duration = 3.0
-                    intro_audio_path = os.path.join(temp_dir, "silent_intro.wav")
-                    create_silent_audio(intro_audio_path, display_duration)
-                
-                # イントロスライドを動画に変換
-                cmd = [
-                    "ffmpeg", "-y",
-                    "-loop", "1",
-                    "-i", intro_slide_path,
-                    "-i", intro_audio_path,
-                    "-c:v", "libx264",
-                    "-tune", "stillimage",
-                    "-c:a", "aac",
-                    "-b:a", "192k",
-                    "-pix_fmt", "yuv420p",
-                    "-shortest"
-                ]
-                
-                cmd.append(intro_video_path)
-                try:
-                    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, text=True)
-                    video_segments.append(intro_video_path)
-                except subprocess.CalledProcessError as e:
-                    logger.error(f"イントロ動画生成エラー: {e.stderr}")
+                    intro_img = self._create_improved_intro_slide(intro_title)
+                    intro_slide_path = os.path.join(temp_dir, "intro_slide.png")
+                    intro_img.save(intro_slide_path)
                     
-                # 各製品ごとに動画セグメントを作成
-                for product in shuffled_products:
-                    rank = product['new_rank']
-                    product_name = product['name']
-                    brand_name = product['brand']
-                    reviews = product.get('reviews', [])
+                    # イントロ音声生成
+                    intro_audio_path = os.path.join(temp_dir, "intro_audio.wav")
+                    intro_success = generate_narration(intro_title, intro_audio_path, "random")
                     
-                    # 製品名・ブランド名だけのナレーション用テキスト
-                    product_intro_text = f"{rank}位、{brand_name}の{product_name}"
-                    
-                    # 1. 製品画像と商品名のみを表示したスライド生成
-                    product_slide = self._create_product_slide(product, rank)
-                    product_slide_path = os.path.join(temp_dir, f"product_{rank}_slide.png")
-                    product_slide.save(product_slide_path)
-                    
-                    # 製品紹介ナレーション音声を生成
-                    product_audio_path = os.path.join(temp_dir, f"product_{rank}_audio.wav")
-                    
-                    # 必ず音声を生成するか確認するためのログ
-                    success = generate_narration(product_intro_text, product_audio_path, "random")
-                    
-                    # 製品画像の動画セグメントを作成
-                    product_video_path = os.path.join(temp_dir, f"product_{rank}_video.mp4")
+                    # イントロ動画セグメント作成
+                    intro_video_path = os.path.join(temp_dir, "intro_video.mp4")
                     
                     # ナレーション音声があれば使用、なければ3秒間の無音
-                    if os.path.exists(product_audio_path) and os.path.getsize(product_audio_path) > 100:
-                        audio_duration = get_audio_duration(product_audio_path)
-                        display_duration = max(audio_duration + 0.5, 3.0)  # 少し余裕を持たせる
+                    if os.path.exists(intro_audio_path) and os.path.getsize(intro_audio_path) > 100:
+                        audio_duration = get_audio_duration(intro_audio_path)
+                        display_duration = max(audio_duration + 1.0, 3.0)  # 少し余裕を持たせる
                     else:
-                        logger.warning(f"製品 {rank} の音声ファイルが存在しないか無効です。無音を使用します。")
+                        logger.warning(f"イントロの音声ファイルが存在しないか無効です。無音を使用します。")
                         display_duration = 3.0
-                        product_audio_path = os.path.join(temp_dir, f"silent_{rank}.wav")
-                        create_silent_audio(product_audio_path, display_duration)
+                        intro_audio_path = os.path.join(temp_dir, "silent_intro.wav")
+                        create_silent_audio(intro_audio_path, display_duration)
                     
-                    # 製品スライドを動画に変換
+                    # イントロスライドを動画に変換
                     cmd = [
                         "ffmpeg", "-y",
                         "-loop", "1",
-                        "-i", product_slide_path,
-                        "-i", product_audio_path,
+                        "-i", intro_slide_path,
+                        "-i", intro_audio_path,
                         "-c:v", "libx264",
                         "-tune", "stillimage",
                         "-c:a", "aac",
@@ -1089,287 +1034,406 @@ class VideoMaker:
                         "-shortest"
                     ]
                     
-                    cmd.append(product_video_path)
+                    cmd.append(intro_video_path)
                     try:
                         result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, text=True)
+                        video_segments.append(intro_video_path)
                     except subprocess.CalledProcessError as e:
-                        logger.error(f"製品 {rank} の動画生成エラー: {e.stderr}")
-                        raise
-                    
-                    video_segments.append(product_video_path)
-                    
-                    # コメントを順番に追加していく
-                    if reviews:
-                        # コメント用のベースとなるスライド（商品名とブランド名を削除済み）を作成
-                        base_slide = product_slide.copy()
-                        draw = ImageDraw.Draw(base_slide)
+                        logger.error(f"イントロ動画生成エラー: {e.stderr}")
                         
-                        # 商品名の位置情報
-                        name_y = 250  # _create_product_slide と同じ値
-                        name_font = self.get_font(self.TITLE_FONT_SIZE, self.noto_sans_jp_bold_path)
-                        name_width = self.calculate_text_width(product_name, name_font, draw)
-                        name_x = (self.VIDEO_WIDTH - name_width) // 2
+                    # 各製品ごとに動画セグメントを作成
+                    for product in shuffled_products:
+                        rank = product['new_rank']
+                        product_name = product['name']
+                        brand_name = product['brand']
+                        reviews = product.get('reviews', [])
                         
-                        # 商品名の背景サイズ
-                        name_padding = 20
-                        name_bg_width = name_width + name_padding * 2
-                        name_bg_height = self.TITLE_FONT_SIZE + name_padding
+                        # 製品名・ブランド名だけのナレーション用テキスト
+                        product_intro_text = f"{rank}位、{brand_name}の{product_name}"
                         
-                        # 商品名をマスクする（黒色背景で上書き）
-                        draw.rectangle(
-                            [(name_x - name_padding, name_y - name_padding // 2), 
-                            (name_x + name_width + name_padding, name_y + name_bg_height)],
-                            fill=self.BG_COLOR  # 黒色背景
-                        )
+                        # 1. 製品画像と商品名のみを表示したスライド生成
+                        product_slide = self._create_product_slide(product, rank)
+                        product_slide_path = os.path.join(temp_dir, f"product_{rank}_slide.png")
+                        product_slide.save(product_slide_path)
                         
-                        # ブランド名の位置情報
-                        brand_y = name_y + self.TITLE_FONT_SIZE + 20  # _create_product_slide と同じ値
-                        brand_font = self.get_font(self.BRAND_FONT_SIZE, self.noto_sans_jp_path)
-                        brand_width = self.calculate_text_width(brand_name, brand_font, draw)
-                        brand_x = (self.VIDEO_WIDTH - brand_width) // 2
+                        # 製品紹介ナレーション音声を生成
+                        product_audio_path = os.path.join(temp_dir, f"product_{rank}_audio.wav")
                         
-                        # ブランド名の背景サイズ
-                        brand_padding = 15
-                        brand_bg_width = brand_width + brand_padding * 2
-                        brand_bg_height = self.BRAND_FONT_SIZE + brand_padding
+                        # 必ず音声を生成するか確認するためのログ
+                        success = generate_narration(product_intro_text, product_audio_path, "random")
                         
-                        # ブランド名もマスクする（黒色背景で上書き）
-                        draw.rectangle(
-                            [(brand_x - brand_padding, brand_y - brand_padding // 2), 
-                            (brand_x + brand_width + brand_padding, brand_y + brand_bg_height)],
-                            fill=self.BG_COLOR  # 黒色背景
-                        )
+                        # 製品画像の動画セグメントを作成
+                        product_video_path = os.path.join(temp_dir, f"product_{rank}_video.mp4")
                         
-                        # 順位表示を再描画（中央揃えで）
-                        rank_font = self.get_font(self.TITLE_FONT_SIZE * 1.3, self.noto_sans_jp_bold_path)
-                        rank_text = f"{rank}位"
-                        rank_width = self.calculate_text_width(rank_text, rank_font, draw)
-                        rank_x = (self.VIDEO_WIDTH - rank_width) // 2  # 中央揃え
-                        rank_y = 50
+                        # ナレーション音声があれば使用、なければ3秒間の無音
+                        if os.path.exists(product_audio_path) and os.path.getsize(product_audio_path) > 100:
+                            audio_duration = get_audio_duration(product_audio_path)
+                            display_duration = max(audio_duration + 0.5, 3.0)  # 少し余裕を持たせる
+                        else:
+                            logger.warning(f"製品 {rank} の音声ファイルが存在しないか無効です。無音を使用します。")
+                            display_duration = 3.0
+                            product_audio_path = os.path.join(temp_dir, f"silent_{rank}.wav")
+                            create_silent_audio(product_audio_path, display_duration)
                         
-                        # 順位表示の背景（白色の四角形）
-                        rank_padding = 20
-                        rank_bg_width = rank_width + rank_padding * 2
-                        rank_bg_height = self.TITLE_FONT_SIZE * 1.3 + rank_padding
+                        # 製品スライドを動画に変換
+                        cmd = [
+                            "ffmpeg", "-y",
+                            "-loop", "1",
+                            "-i", product_slide_path,
+                            "-i", product_audio_path,
+                            "-c:v", "libx264",
+                            "-tune", "stillimage",
+                            "-c:a", "aac",
+                            "-b:a", "192k",
+                            "-pix_fmt", "yuv420p",
+                            "-shortest"
+                        ]
                         
-                        # 背景の四角形を描画
-                        draw.rectangle(
-                            [(rank_x - rank_padding, rank_y - rank_padding // 2), 
-                            (rank_x + rank_width + rank_padding, rank_y + rank_bg_height)],
-                            fill=self.TEXT_BG_COLOR  # 白色背景
-                        )
+                        cmd.append(product_video_path)
+                        try:
+                            result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, text=True)
+                        except subprocess.CalledProcessError as e:
+                            logger.error(f"製品 {rank} の動画生成エラー: {e.stderr}")
+                            raise
                         
-                        # 順位テキストを描画
-                        self.apply_text_outline(
-                            draw=draw,
-                            text=rank_text,
-                            x=rank_x,
-                            y=rank_y,
-                            font=rank_font,
-                            text_color=self.RANK_COLOR,
-                            outline_color=self.SHADOW_COLOR,
-                            outline_width=2
-                        )
+                        video_segments.append(product_video_path)
                         
-                        # ベーススライドを保存
-                        base_slide_path = os.path.join(temp_dir, f"product_{rank}_base_slide.png")
-                        base_slide.save(base_slide_path)
-                        
-                        # 表示済みコメントを保持するスライド
-                        accumulated_slide = base_slide.copy()
-                        
-                        # コメント位置を定義
-                        positions = ["top", "middle", "bottom"]
-                        
-                        # コメントを順番に表示・読み上げる
-                        for i, review in enumerate(reviews[:3]):
-                            if not review:
-                                continue
+                        # コメントを順番に追加していく
+                        if reviews:
+                            # コメント用のベースとなるスライド（商品名とブランド名を削除済み）を作成
+                            base_slide = product_slide.copy()
+                            draw = ImageDraw.Draw(base_slide)
                             
-                            # コメント位置
-                            comment_position = positions[i % len(positions)]
+                            # 商品名の位置情報
+                            name_y = 250  # _create_product_slide と同じ値
+                            name_font = self.get_font(self.TITLE_FONT_SIZE, self.noto_sans_jp_bold_path)
+                            name_width = self.calculate_text_width(product_name, name_font, draw)
+                            name_x = (self.VIDEO_WIDTH - name_width) // 2
                             
-                            # コメントを累積スライドに追加
-                            comment_font = self.get_font(self.REVIEW_FONT_SIZE+ 15, self.noto_sans_jp_path)
-                            draw = ImageDraw.Draw(accumulated_slide)
+                            # 商品名の背景サイズ
+                            name_padding = 20
+                            name_bg_width = name_width + name_padding * 2
+                            name_bg_height = self.TITLE_FONT_SIZE + name_padding
                             
-                            comment_text = f"{review}"
-                            comment_width = self.calculate_text_width(comment_text, comment_font, draw)
+                            # 商品名をマスクする（黒色背景で上書き）
+                            draw.rectangle(
+                                [(name_x - name_padding, name_y - name_padding // 2), 
+                                (name_x + name_width + name_padding, name_y + name_bg_height)],
+                                fill=self.BG_COLOR  # 黒色背景
+                            )
                             
-                            # コメントインデックスに応じて色を設定
-                            if i == 0:
-                                border_color = (255, 50, 50)  # 赤色
-                            elif i == 1:
-                                border_color = (50, 255, 50)  # 緑色
-                            else:
-                                border_color = (50, 50, 255)  # 青色
+                            # ブランド名の位置情報
+                            brand_y = name_y + self.TITLE_FONT_SIZE + 20  # _create_product_slide と同じ値
+                            brand_font = self.get_font(self.BRAND_FONT_SIZE, self.noto_sans_jp_path)
+                            brand_width = self.calculate_text_width(brand_name, brand_font, draw)
+                            brand_x = (self.VIDEO_WIDTH - brand_width) // 2
                             
-                            # コメント表示位置
-                            if comment_position == "top":
-                                y_pos = int(self.VIDEO_HEIGHT * 0.25)
-                            elif comment_position == "middle":
-                                y_pos = int(self.VIDEO_HEIGHT * 0.5)
-                            else:  # bottom
-                                y_pos = int(self.VIDEO_HEIGHT * 0.75)
+                            # ブランド名の背景サイズ
+                            brand_padding = 15
+                            brand_bg_width = brand_width + brand_padding * 2
+                            brand_bg_height = self.BRAND_FONT_SIZE + brand_padding
                             
-                            # コメント描画（長い場合は折り返し）
-                            max_width = int(self.VIDEO_WIDTH * 0.8)
-                            if comment_width > max_width:
-                                # 折り返し処理
-                                words = list(comment_text)
-                                lines = []
-                                current_line = ""
+                            # ブランド名もマスクする（黒色背景で上書き）
+                            draw.rectangle(
+                                [(brand_x - brand_padding, brand_y - brand_padding // 2), 
+                                (brand_x + brand_width + brand_padding, brand_y + brand_bg_height)],
+                                fill=self.BG_COLOR  # 黒色背景
+                            )
+                            
+                            # 順位表示を再描画（中央揃えで）
+                            rank_font = self.get_font(self.TITLE_FONT_SIZE * 1.3, self.noto_sans_jp_bold_path)
+                            rank_text = f"{rank}位"
+                            rank_width = self.calculate_text_width(rank_text, rank_font, draw)
+                            rank_x = (self.VIDEO_WIDTH - rank_width) // 2  # 中央揃え
+                            rank_y = 50
+                            
+                            # 順位表示の背景（白色の四角形）
+                            rank_padding = 20
+                            rank_bg_width = rank_width + rank_padding * 2
+                            rank_bg_height = self.TITLE_FONT_SIZE * 1.3 + rank_padding
+                            
+                            # 背景の四角形を描画
+                            draw.rectangle(
+                                [(rank_x - rank_padding, rank_y - rank_padding // 2), 
+                                (rank_x + rank_width + rank_padding, rank_y + rank_bg_height)],
+                                fill=self.TEXT_BG_COLOR  # 白色背景
+                            )
+                            
+                            # 順位テキストを描画
+                            self.apply_text_outline(
+                                draw=draw,
+                                text=rank_text,
+                                x=rank_x,
+                                y=rank_y,
+                                font=rank_font,
+                                text_color=self.RANK_COLOR,
+                                outline_color=self.SHADOW_COLOR,
+                                outline_width=2
+                            )
+                            
+                            # ベーススライドを保存
+                            base_slide_path = os.path.join(temp_dir, f"product_{rank}_base_slide.png")
+                            base_slide.save(base_slide_path)
+                            
+                            # 表示済みコメントを保持するスライド
+                            accumulated_slide = base_slide.copy()
+                            
+                            # コメント位置を定義
+                            positions = ["top", "middle", "bottom"]
+                            
+                            # コメントを順番に表示・読み上げる
+                            for i, review in enumerate(reviews[:3]):
+                                if not review:
+                                    continue
                                 
-                                for word in words:
-                                    test_line = current_line + word
-                                    test_width = self.calculate_text_width(test_line, comment_font, draw)
-                                    
-                                    if test_width <= max_width:
-                                        current_line = test_line
-                                    else:
-                                        lines.append(current_line)
-                                        current_line = word
+                                # コメント位置
+                                comment_position = positions[i % len(positions)]
                                 
-                                if current_line:
-                                    lines.append(current_line)
+                                # コメントを累積スライドに追加
+                                comment_font = self.get_font(self.REVIEW_FONT_SIZE+ 15, self.noto_sans_jp_path)
+                                draw = ImageDraw.Draw(accumulated_slide)
                                 
-                                # 複数行の描画
-                                line_height = int(self.REVIEW_FONT_SIZE * 1.5)
-                                comment_height = line_height * len(lines)
+                                comment_text = f"{review}"
+                                comment_width = self.calculate_text_width(comment_text, comment_font, draw)
                                 
+                                # コメントインデックスに応じて色を設定
+                                if i == 0:
+                                    border_color = (255, 50, 50)  # 赤色
+                                elif i == 1:
+                                    border_color = (50, 255, 50)  # 緑色
+                                else:
+                                    border_color = (50, 50, 255)  # 青色
+                                
+                                # コメント表示位置
                                 if comment_position == "top":
-                                    comment_y = y_pos
+                                    y_pos = int(self.VIDEO_HEIGHT * 0.25)
                                 elif comment_position == "middle":
-                                    comment_y = y_pos - comment_height // 2
+                                    y_pos = int(self.VIDEO_HEIGHT * 0.5)
                                 else:  # bottom
-                                    comment_y = y_pos - comment_height
+                                    y_pos = int(self.VIDEO_HEIGHT * 0.75)
                                 
-                                # 背景の四角を描画
-                                padding = 25
-                                box_top = comment_y - padding
-                                box_bottom = comment_y + comment_height + padding
-                                box_left = (self.VIDEO_WIDTH - max_width) // 2 - padding
-                                box_right = (self.VIDEO_WIDTH + max_width) // 2 + padding
-                                
-                                draw.rectangle(
-                                    [(box_left, box_top), (box_right, box_bottom)],
-                                    fill=self.TEXT_BG_COLOR,
-                                    outline=border_color,
-                                    width=5
-                                )
-                                
-                                # 各行を描画
-                                for j, line in enumerate(lines):
-                                    line_y = comment_y + j * line_height
-                                    line_width = self.calculate_text_width(line, comment_font, draw)
-                                    line_x = (self.VIDEO_WIDTH - line_width) // 2
+                                # コメント描画（長い場合は折り返し）
+                                max_width = int(self.VIDEO_WIDTH * 0.8)
+                                if comment_width > max_width:
+                                    # 折り返し処理
+                                    words = list(comment_text)
+                                    lines = []
+                                    current_line = ""
                                     
+                                    for word in words:
+                                        test_line = current_line + word
+                                        test_width = self.calculate_text_width(test_line, comment_font, draw)
+                                        
+                                        if test_width <= max_width:
+                                            current_line = test_line
+                                        else:
+                                            lines.append(current_line)
+                                            current_line = word
+                                    
+                                    if current_line:
+                                        lines.append(current_line)
+                                    
+                                    # 複数行の描画
+                                    line_height = int(self.REVIEW_FONT_SIZE * 1.5)
+                                    comment_height = line_height * len(lines)
+                                    
+                                    if comment_position == "top":
+                                        comment_y = y_pos
+                                    elif comment_position == "middle":
+                                        comment_y = y_pos - comment_height // 2
+                                    else:  # bottom
+                                        comment_y = y_pos - comment_height
+                                    
+                                    # 背景の四角を描画
+                                    padding = 25
+                                    box_top = comment_y - padding
+                                    box_bottom = comment_y + comment_height + padding
+                                    box_left = (self.VIDEO_WIDTH - max_width) // 2 - padding
+                                    box_right = (self.VIDEO_WIDTH + max_width) // 2 + padding
+                                    
+                                    draw.rectangle(
+                                        [(box_left, box_top), (box_right, box_bottom)],
+                                        fill=self.TEXT_BG_COLOR,
+                                        outline=border_color,
+                                        width=5
+                                    )
+                                    
+                                    # 各行を描画
+                                    for j, line in enumerate(lines):
+                                        line_y = comment_y + j * line_height
+                                        line_width = self.calculate_text_width(line, comment_font, draw)
+                                        line_x = (self.VIDEO_WIDTH - line_width) // 2
+                                        
+                                        draw.text(
+                                            (line_x, line_y),
+                                            line,
+                                            font=comment_font,
+                                            fill=self.TEXT_COLOR
+                                        )
+                                else:
+                                    # 1行のコメント
+                                    if comment_position == "top":
+                                        comment_y = y_pos
+                                    elif comment_position == "middle":
+                                        comment_y = y_pos - self.REVIEW_FONT_SIZE // 2
+                                    else:  # bottom
+                                        comment_y = y_pos - self.REVIEW_FONT_SIZE
+                                    
+                                    comment_x = (self.VIDEO_WIDTH - comment_width) // 2
+                                    
+                                    # 背景の四角を描画
+                                    padding = 20
+                                    box_width = comment_width + padding * 2
+                                    box_height = self.REVIEW_FONT_SIZE + padding * 2
+                                    
+                                    draw.rectangle(
+                                        [(comment_x - padding, comment_y - padding), 
+                                        (comment_x + comment_width + padding, comment_y + box_height - padding)],
+                                        fill=self.TEXT_BG_COLOR,
+                                        outline=border_color,
+                                        width=5
+                                    )
+                                    
+                                    # コメントを描画
                                     draw.text(
-                                        (line_x, line_y),
-                                        line,
+                                        (comment_x, comment_y),
+                                        comment_text,
                                         font=comment_font,
                                         fill=self.TEXT_COLOR
                                     )
-                            else:
-                                # 1行のコメント
-                                if comment_position == "top":
-                                    comment_y = y_pos
-                                elif comment_position == "middle":
-                                    comment_y = y_pos - self.REVIEW_FONT_SIZE // 2
-                                else:  # bottom
-                                    comment_y = y_pos - self.REVIEW_FONT_SIZE
                                 
-                                comment_x = (self.VIDEO_WIDTH - comment_width) // 2
+                                # 現在の累積スライドを保存（コメント追加後）
+                                comment_slide_path = os.path.join(temp_dir, f"product_{rank}_comment_{i+1}.png")
+                                accumulated_slide.save(comment_slide_path)
                                 
-                                # 背景の四角を描画
-                                padding = 20
-                                box_width = comment_width + padding * 2
-                                box_height = self.REVIEW_FONT_SIZE + padding * 2
+                                # コメント用の音声を生成
+                                comment_audio_path = os.path.join(temp_dir, f"product_{rank}_comment_{i+1}_audio.wav")
+                                comment_success = generate_narration(review, comment_audio_path, "random")
                                 
-                                draw.rectangle(
-                                    [(comment_x - padding, comment_y - padding), 
-                                    (comment_x + comment_width + padding, comment_y + box_height - padding)],
-                                    fill=self.TEXT_BG_COLOR,
-                                    outline=border_color,
-                                    width=5
-                                )
+                                # コメントの音声が存在するか確認
+                                if not os.path.exists(comment_audio_path) or os.path.getsize(comment_audio_path) < 100:
+                                    logger.warning(f"製品 {rank} のコメント {i+1} の音声ファイルが存在しないか無効です。無音を使用します。")
+                                    comment_audio_path = os.path.join(temp_dir, f"silent_comment_{rank}_{i+1}.wav")
+                                    create_silent_audio(comment_audio_path, 3.0)
                                 
-                                # コメントを描画
-                                draw.text(
-                                    (comment_x, comment_y),
-                                    comment_text,
-                                    font=comment_font,
-                                    fill=self.TEXT_COLOR
-                                )
-                            
-                            # 現在の累積スライドを保存（コメント追加後）
-                            comment_slide_path = os.path.join(temp_dir, f"product_{rank}_comment_{i+1}.png")
-                            accumulated_slide.save(comment_slide_path)
-                            
-                            # コメント用の音声を生成
-                            comment_audio_path = os.path.join(temp_dir, f"product_{rank}_comment_{i+1}_audio.wav")
-                            comment_success = generate_narration(review, comment_audio_path, "random")
-                            
-                            # コメントの音声が存在するか確認
-                            if not os.path.exists(comment_audio_path) or os.path.getsize(comment_audio_path) < 100:
-                                logger.warning(f"製品 {rank} のコメント {i+1} の音声ファイルが存在しないか無効です。無音を使用します。")
-                                comment_audio_path = os.path.join(temp_dir, f"silent_comment_{rank}_{i+1}.wav")
-                                create_silent_audio(comment_audio_path, 3.0)
-                            
-                            # 個別のコメントスライドを動画に変換
-                            comment_video_path = os.path.join(temp_dir, f"product_{rank}_comment_{i+1}_video.mp4")
-                            
-                            cmd = [
-                                "ffmpeg", "-y",
-                                "-loop", "1",
-                                "-i", comment_slide_path,
-                                "-i", comment_audio_path,
-                                "-c:v", "libx264",
-                                "-tune", "stillimage",
-                                "-c:a", "aac",
-                                "-b:a", "192k",
-                                "-pix_fmt", "yuv420p",
-                                "-shortest"
-                            ]
-                            
-                            cmd.append(comment_video_path)
-                            
-                            try:
-                                result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, text=True)
-                            except subprocess.CalledProcessError as e:
-                                logger.error(f"製品 {rank} のコメント {i+1} の動画生成エラー: {e.stderr}")
-                                raise
-                            
-                            # 動画セグメントに追加
-                            video_segments.append(comment_video_path)
-                
-                # すべての動画セグメントを連結
-                concat_file = os.path.join(temp_dir, "concat.txt")
-                with open(concat_file, "w") as f:
-                    for segment in video_segments:
-                        f.write(f"file '{segment}'\n")
-                
-                # 最終動画を作成
-                cmd = [
-                    "ffmpeg", "-y",
-                    "-f", "concat",
-                    "-safe", "0",
-                    "-i", concat_file,
-                    "-c", "copy",
-                    output_path
-                ]
-                
-                try:
-                    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, text=True)
-                except subprocess.CalledProcessError as e:
-                    logger.error(f"最終動画の作成エラー: {e.stderr}")
-                    raise
-                
-                logger.info(f"動画作成完了: {output_path}")
-                return output_path
-                
+                                # 個別のコメントスライドを動画に変換
+                                comment_video_path = os.path.join(temp_dir, f"product_{rank}_comment_{i+1}_video.mp4")
+                                
+                                cmd = [
+                                    "ffmpeg", "-y",
+                                    "-loop", "1",
+                                    "-i", comment_slide_path,
+                                    "-i", comment_audio_path,
+                                    "-c:v", "libx264",
+                                    "-tune", "stillimage",
+                                    "-c:a", "aac",
+                                    "-b:a", "192k",
+                                    "-pix_fmt", "yuv420p",
+                                    "-shortest"
+                                ]
+                                
+                                cmd.append(comment_video_path)
+                                
+                                try:
+                                    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, text=True)
+                                except subprocess.CalledProcessError as e:
+                                    logger.error(f"製品 {rank} のコメント {i+1} の動画生成エラー: {e.stderr}")
+                                    raise
+                                
+                                # 動画セグメントに追加
+                                video_segments.append(comment_video_path)
+                    
+                    # すべての動画セグメントを連結するファイル作成
+                    concat_file = os.path.join(temp_dir, "concat.txt")
+                    with open(concat_file, "w") as f:
+                        for segment in video_segments:
+                            f.write(f"file '{segment}'\n")
+                    
+                    # まずBGMなしで動画を連結
+                    temp_video_path = os.path.join(temp_dir, "no_bgm_output.mp4")
+                    concat_cmd = [
+                        "ffmpeg", "-y",
+                        "-f", "concat",
+                        "-safe", "0",
+                        "-i", concat_file,
+                        "-c", "copy",
+                        temp_video_path
+                    ]
+                    
+                    try:
+                        result = subprocess.run(concat_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, text=True)
+                    except subprocess.CalledProcessError as e:
+                        logger.error(f"最終動画の連結エラー: {e.stderr}")
+                        raise
+                    
+                    # 動画の長さを取得
+                    video_duration = self._get_video_duration(temp_video_path)
+                    if video_duration <= 0:
+                        logger.warning("動画の長さが取得できませんでした。デフォルト値を使用します。")
+                        video_duration = 60.0
+                    
+                    # BGMを追加
+                    bgm_path = os.path.join(self.bgm_dir, "いつもの風景.mp3")
+                    if not os.path.exists(bgm_path):
+                        logger.warning(f"BGMファイルが見つかりません: {bgm_path}")
+                        logger.info("BGMなしで動画を出力します。")
+                        os.rename(temp_video_path, output_path)
+                    else:
+                        # BGMを追加するコマンド
+                        bgm_cmd = [
+                            "ffmpeg", "-y",
+                            "-i", temp_video_path,  # 元の動画
+                            "-stream_loop", "-1",   # BGMをループ再生
+                            "-i", bgm_path,         # BGMファイル
+                            "-filter_complex",
+                            # BGMの音量を0.3に調整し、無限ループ
+                            f"[1:a]volume=0.3,aloop=loop=-1:size=2e+09[bgm];"
+                            # 元の音声とBGMをミックス
+                            "[0:a][bgm]amix=inputs=2:duration=first[aout]",
+                            "-map", "0:v",          # 元の動画の映像
+                            "-map", "[aout]",       # ミックスした音声
+                            "-c:v", "copy",
+                            "-c:a", "aac",
+                            "-shortest",            # 最短の入力に合わせる
+                            "-t", str(video_duration),  # 元の動画の長さを維持
+                            output_path
+                        ]
+                        
+                        try:
+                            result = subprocess.run(bgm_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, text=True)
+                            logger.info(f"BGM付き動画を作成しました: {output_path}")
+                        except subprocess.CalledProcessError as e:
+                            logger.error(f"BGM追加中にエラー: {e.stderr}")
+                            # エラーが発生した場合は元の動画を使用
+                            os.rename(temp_video_path, output_path)
+                            logger.info(f"BGMなしで動画を出力しました: {output_path}")
+                    
+                    # 一時ファイルの削除
+                    if os.path.exists(temp_video_path) and os.path.exists(output_path):
+                        os.remove(temp_video_path)
+                    
+                    logger.info(f"動画作成完了: {output_path}")
+                    return output_path
+                    
+            except Exception as e:
+                logger.error(f"動画作成エラー: {str(e)}")
+                import traceback
+                logger.error(traceback.format_exc())
+                raise
+
+    def _get_video_duration(self, video_path):
+        """動画ファイルの長さを取得する"""
+        try:
+            cmd = [
+                "ffprobe", 
+                "-v", "error", 
+                "-show_entries", "format=duration", 
+                "-of", "default=noprint_wrappers=1:nokey=1", 
+                video_path
+            ]
+            result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
+            duration = float(result.stdout.strip())
+            return duration
         except Exception as e:
-            logger.error(f"動画作成エラー: {str(e)}")
-            import traceback
-            logger.error(traceback.format_exc())
-            raise
+            logger.error(f"動画長さ取得例外: {e}")
+            return 0

@@ -82,10 +82,10 @@ __MACOSX/
 coverage.xml
 docker-compose.yml
 *.mp4
+*.mp3
 *.mov
 *.mkv
 *.wav
-*.mp3
 *.png
 *.jpg
 *.jpeg
