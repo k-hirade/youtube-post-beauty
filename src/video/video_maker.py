@@ -99,35 +99,37 @@ class VideoMaker:
         self,
         base: Image.Image,
         text: str,
-        y: int,
+        y: int,                       # ←   文字の上端
         font: ImageFont.FreeTypeFont,
         **kw,
     ) -> None:
-        """
-        draw_text_effect で文字を描いてから X 方向にシアーして
-        疑似的にイタリックにするユーティリティ
-        """
-        tmp = Image.new("RGBA", base.size, (0, 0, 0, 0))
+        """ draw_text_effect → X 方向シアーで疑似イタリック """
+
+
         xmin, ymin, xmax, ymax = font.getbbox(text)
-        # シアー後の横幅 = w + k*h
-        w = xmax - xmin              # 幅
-        h = ymax - ymin              # 高さ
-        shear = 0.15
-        
-        offset_for_shear = shear * h / 2
-        x = (self.VIDEO_WIDTH - w) // 2 - int(offset_for_shear)
-        
-        # 文字を描画
+        w = xmax - xmin
+        h = ymax - ymin
+        shear = 0.15                 # 傾き tanθ
+        # 変形後の幅
+        w_after = w + shear * h
+        # 変形後の左端を画面中央に合わせたい
+        left_after = (self.VIDEO_WIDTH - w_after) // 2
+        # 変形で x′ = x + shear·Y になるので、描画時に −shear·y を先に引く
+        x = int(left_after - shear * y) + 300
+
+        tmp = Image.new("RGBA", (self.VIDEO_WIDTH+70, base.height), (0, 0, 0, 0))
         self.draw_text_effect(tmp, text, (x, y), font, **kw)
 
-        # 文字を傾ける変換行列
+        # 4) X 方向にシアー
         tmp = tmp.transform(
             tmp.size,
             Image.AFFINE,
-            (1, shear, 0, 0, 1, 0),
+            (1, shear, 0,   0, 1, 0),          # [[1, shear, 0], [0, 1, 0]]
             resample=Image.BICUBIC,
             fillcolor=(0, 0, 0, 0),
         )
+
+        # 5) 合成
         base.alpha_composite(tmp)
 
     def draw_text_effect(
@@ -666,7 +668,7 @@ class VideoMaker:
             stroke_width=5, stroke_fill=(0, 0, 0),
             glow_radius=10, glow_opacity=0.2
         )
-        y += 70
+        y += 100
 
         # ⑥ フッタ
         text = "※これはブックマーク必須やで"
