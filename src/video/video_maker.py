@@ -47,6 +47,7 @@ class VideoMaker:
     
     TEXT_BG_COLOR = (255, 255, 255)
 
+    SOURCE_HAN_SERIF_HEAVY = "/Library/Fonts/SourceHanSerif-Heavy.otf"
     
     def __init__(
         self,
@@ -83,10 +84,6 @@ class VideoMaker:
                 self.font_path = '/System/Library/Fonts/Supplemental/Arial Unicode.ttf'
                 self.noto_sans_jp_path = '/Library/Fonts/NotoSansJP-Regular.otf'
                 self.noto_sans_jp_bold_path = '/Library/Fonts/NotoSansCJKjp-Bold.otf'
-            elif system == 'Windows':  # Windows
-                self.font_path = 'C:\\Windows\\Fonts\\arial.ttf'
-                self.noto_sans_jp_path = 'C:\\Windows\\Fonts\\NotoSansJP-Regular.otf'
-                self.noto_sans_jp_bold_path = 'C:\\Windows\\Fonts\\NotoSansCJKjp-Bold.otf'
             else:  # Linux
                 self.font_path = '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
                 self.noto_sans_jp_path = '/usr/share/fonts/opentype/noto/NotoSansJP-Regular.otf'
@@ -96,6 +93,130 @@ class VideoMaker:
         if not os.path.exists(self.font_path):
             logger.warning(f"指定したフォント({self.font_path})が見つかりません。代替フォントを使用します。")
             self.font_path = None
+
+
+    def _draw_text_italic(
+        self,
+        base: Image.Image,
+        text: str,
+        y: int,
+        font: ImageFont.FreeTypeFont,
+        **kw,
+    ) -> None:
+        """
+        draw_text_effect で文字を描いてから X 方向にシアーして
+        疑似的にイタリックにするユーティリティ
+        """
+        tmp = Image.new("RGBA", base.size, (0, 0, 0, 0))
+        xmin, ymin, xmax, ymax = font.getbbox(text)
+        # シアー後の横幅 = w + k*h
+        w = xmax - xmin              # 幅
+        h = ymax - ymin              # 高さ
+        shear = 0.15
+        
+        offset_for_shear = shear * h / 2
+        x = (self.VIDEO_WIDTH - w) // 2 - int(offset_for_shear)
+        
+        # 文字を描画
+        self.draw_text_effect(tmp, text, (x, y), font, **kw)
+
+        # 文字を傾ける変換行列
+        tmp = tmp.transform(
+            tmp.size,
+            Image.AFFINE,
+            (1, shear, 0, 0, 1, 0),
+            resample=Image.BICUBIC,
+            fillcolor=(0, 0, 0, 0),
+        )
+        base.alpha_composite(tmp)
+
+    def draw_text_effect(
+        self,
+        base: Image.Image,
+        text: str,
+        xy: tuple[int, int],
+        font: ImageFont.FreeTypeFont,
+        *,
+        fill: tuple[int, int, int] = (255, 255, 255),
+        stroke_width: int = 0,
+        stroke_fill: tuple[int, int, int] | None = None,
+        inner_stroke_width: int | None = None,
+        inner_stroke_fill: tuple[int, int, int] | None = None,
+        gradient: list[tuple[int, int, int]] | None = None,
+        glow_radius: int = 0,
+        glow_opacity: float = 0.3,
+        bevel: bool = False
+    ) -> None:
+        """
+        1 回の呼び出しで “二重ストローク＋グラデ＋グロー” までまとめて描画
+        Pillow だけで完結させるために
+        - グラデはマスク描画
+        - グローは blur
+        - ベベルは上下 1px シフト描画
+        """
+        from PIL import ImageFilter, ImageChops
+
+        txt_layer = Image.new("RGBA", base.size, (0, 0, 0, 0))
+        d = ImageDraw.Draw(txt_layer)
+
+        # 外側ストローク
+        if stroke_width and stroke_fill:
+            for dx in range(-stroke_width, stroke_width + 1):
+                for dy in range(-stroke_width, stroke_width + 1):
+                    if dx*dx + dy*dy <= stroke_width*stroke_width:
+                        d.text((xy[0] + dx, xy[1] + dy), text, font=font, fill=stroke_fill)
+
+        # 内側ストローク（Photoshop の「線‑内側」っぽく見せるため、少し縮小したマスクを使う）
+        if inner_stroke_width and inner_stroke_fill:
+            mask = Image.new("L", base.size, 0)
+            mdraw = ImageDraw.Draw(mask)
+            mdraw.text(xy, text, font=font, fill=255)
+            # マスクを縮小して内側分を確保
+            mask = mask.filter(ImageFilter.MaxFilter(inner_stroke_width*2+1))
+            ishape = Image.new("RGBA", base.size, (*inner_stroke_fill, 255))
+            txt_layer = Image.composite(ishape, txt_layer, mask)
+
+        # 本体塗り（グラデ or 単色）
+        if gradient:
+            top, *mid, bottom = gradient
+            grad = Image.new("RGB", (1, font.size), color=0)
+            for y in range(grad.height):
+                ratio = y / (grad.height - 1)
+                # 線形補間（中間色がある場合も雑に線形補間）
+                if len(gradient) == 2:
+                    c1, c2 = top, bottom
+                else:
+                    # 3 色の場合
+                    c1, c2 = (top, bottom) if ratio > .5 else (top, mid[0])
+                    ratio = ratio*2 if ratio <= .5 else (ratio-.5)*2
+                grad.putpixel((0, y), tuple(int(c1[i] + (c2[i]-c1[i])*ratio) for i in range(3)))
+            grad = grad.resize((base.width, base.height))
+            mask = Image.new("L", base.size, 0)
+            mdraw = ImageDraw.Draw(mask)
+            mdraw.text(xy, text, font=font, fill=255)
+            txt_layer = Image.composite(grad, txt_layer, mask)
+        else:
+            d.text(xy, text, font=font, fill=fill)
+
+        # ベベル＆エンボス（簡易）：ハイライトとシャドウを 1px ずらして描画
+        if bevel:
+            bevel_layer = Image.new("RGBA", base.size, (0, 0, 0, 0))
+            bd = ImageDraw.Draw(bevel_layer)
+            # ハイライト
+            bd.text((xy[0]-1, xy[1]-1), text, font=font, fill=(255, 255, 255, int(255*0.75)))
+            # シャドウ
+            bd.text((xy[0]+1, xy[1]+1), text, font=font, fill=(158, 122, 0, int(255*0.5)))
+            txt_layer = Image.alpha_composite(txt_layer, bevel_layer)
+
+        # 外側グロー
+        if glow_radius:
+            glow = txt_layer.split()[-1].filter(ImageFilter.GaussianBlur(glow_radius))
+            glow = ImageChops.multiply(glow, Image.new("L", glow.size, int(255*glow_opacity)))
+            glow_layer = Image.new("RGBA", base.size, (0, 0, 0, 0))
+            glow_layer.putalpha(glow)
+            base.alpha_composite(glow_layer)
+
+        base.alpha_composite(txt_layer)
     
     def get_font(self, size: int, font_path: str = None) -> ImageFont.FreeTypeFont:
         """
@@ -461,271 +582,105 @@ class VideoMaker:
         return img
     
     def _create_improved_intro_slide(self, title: str) -> Image.Image:
-        """
-        アイキャッチとなる魅力的なイントロスライドを作成
-        カンマ位置で改行するように修正
-        
-        Args:
-            title: 動画タイトル（例: "薬局で買える神商品"）
-            
-        Returns:
-            Image.Image: イントロスライド画像
-        """
-        # 背景画像を作成（濃い青みがかった黒背景）
-        img = Image.new('RGB', (self.VIDEO_WIDTH, self.VIDEO_HEIGHT), (15, 15, 35))
-        draw = ImageDraw.Draw(img)
-        
-        # フォント設定
-        # 基本フォントサイズ - 以下のサイズは見栄えを調整
-        ichido_font = self.get_font(100, self.noto_sans_jp_bold_path)
-        maji_font = self.get_font(120, self.noto_sans_jp_bold_path)
-        tsukatte_font = self.get_font(120, self.noto_sans_jp_bold_path)
-        mite_font = self.get_font(120, self.noto_sans_jp_bold_path)
-        hoshii_font = self.get_font(120, self.noto_sans_jp_bold_path)
-        yakkyoku_font = self.get_font(120, self.noto_sans_jp_bold_path)
-        shinshohin_font = self.get_font(140, self.noto_sans_jp_bold_path)
-        agete_font = self.get_font(70, self.noto_sans_jp_bold_path)
-        footnote_font = self.get_font(50, self.noto_sans_jp_bold_path)
-        
-        # タイトルからチャンネルとジャンルを抽出
-        channel = ""
-        genre = ""
-        if "で買える" in title:
-            channel = title.split('で買える')[0]
-            genre = title.split('で買える')[-1].replace('ランキング', '').strip()
-            genre = genre.replace('7選！', '')
-        
-        # テキストを区切り位置で分割
-        ichido_text = "一度は"
-        maji_text = "マジで"
-        tsukatte_text = "使ってみて"
-        hoshii_text = "欲しい"
-        yakkyoku_text = f"{channel}で買える"
-        shinshohin_text = f"{genre}神商品"
-        agete_text = "挙げてくw"
-        footnote_text = "※これはブックマーク必須やで"
-        
-        # 各行のY位置を設定（間隔調整）
-        y_start = self.VIDEO_HEIGHT * 0.07  # 上部スタート位置
-        line_spacing = 120                   # 行間
-        
-        # 各行のY位置を計算
-        y_positions = [
-            y_start,                    # "一度は"
-            y_start + line_spacing,     # "マジで"
-            y_start + line_spacing*2,   # "使ってみて"
-            y_start + line_spacing*3,   # "欲しい"
-            y_start + line_spacing*4.5, # "{場所}で買える"（少し間隔を空ける）
-            y_start + line_spacing*5.5, # "神商品"（少し間隔を空ける）
-            y_start + line_spacing*7,   # "挙げてくw"
-            y_start + line_spacing*8,   # "※これはブックマーク必須やで"
-        ]
-        
-        # ---- 「一度は」テキストの描画 ----
-        ichido_width = self.calculate_text_width(ichido_text, ichido_font, draw)
-        ichido_x = (self.VIDEO_WIDTH - ichido_width) // 2
-        
-        # 白色テキストに黒の太い縁取り
-        self.apply_text_outline(
-            draw=draw,
-            text=ichido_text,
-            x=ichido_x,
-            y=y_positions[0],
-            font=ichido_font,
-            text_color=(255, 255, 255),  # 白色
-            outline_color=(0, 0, 0),     # 黒色
-            outline_width=12             # 太い縁取り
+        bg = Image.new("RGBA", (self.VIDEO_WIDTH, self.VIDEO_HEIGHT), (15, 15, 35, 255))
+        # 背景のぼかし入り写真があるならここで合成しても OK
+        y = int(self.VIDEO_HEIGHT * 0.06)
+
+        # 共通フォント
+        heavy130  = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY, 130)
+        heavy220  = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY, 220)
+        heavy150  = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY, 150)
+        heavy180  = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY, 180)
+        heavy80   = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY, 80)
+        heavy60   = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY, 60)
+
+        # ① 一度は
+        w = self.calculate_text_width("一度は", heavy130, ImageDraw.Draw(bg))
+        self.draw_text_effect(
+            bg, "一度は", ((self.VIDEO_WIDTH-w)//2, y),
+            heavy130,
+            fill=(255, 255, 255),
+            stroke_width=8, stroke_fill=(0, 0, 0),
+            glow_radius=15, glow_opacity=0.3
         )
-        
-        # ---- 「マジで」テキストの描画 ----
-        maji_width = self.calculate_text_width(maji_text, maji_font, draw)
-        maji_x = (self.VIDEO_WIDTH - maji_width) // 2
-        
-        # 二重縁取りで高級感を演出（赤系テキスト）
-        # 1. まず黒い外側の縁取り
-        self.apply_text_outline(
-            draw=draw,
-            text=maji_text,
-            x=maji_x,
-            y=y_positions[1],
-            font=maji_font,
-            text_color=(0, 0, 0, 0),     # 透明（後で上書き）
-            outline_color=(0, 0, 0),     # 黒色
-            outline_width=12             # 太い外側縁取り
+        y += 100
+
+        # ② マジで使ってみて欲しい（4 行構成でも OK）
+        w = self.calculate_text_width("マジで", heavy220, ImageDraw.Draw(bg))
+        self.draw_text_effect(
+            bg, "マジで", ((self.VIDEO_WIDTH-w)//2, y),
+            heavy220,
+            gradient=[(215, 85, 79), (130, 22, 22)],
+            inner_stroke_width=4, inner_stroke_fill=(255, 255, 255),
+            stroke_width=10, stroke_fill=(0, 0, 0),
+            glow_radius=15, glow_opacity=0.5
         )
-        
-        # 2. 次に白い内側の縁取り
-        self.apply_text_outline(
-            draw=draw,
-            text=maji_text,
-            x=maji_x,
-            y=y_positions[1],
-            font=maji_font,
-            text_color=(0, 0, 0, 0),      # 透明（後で上書き）
-            outline_color=(255, 255, 255), # 白色
-            outline_width=6                # 中程度の内側縁取り
+        y += 230
+
+        for line in ["使ってみて", "欲しい"]:
+            w = self.calculate_text_width(line, heavy150, ImageDraw.Draw(bg))
+            self.draw_text_effect(
+                bg, line, ((self.VIDEO_WIDTH-w)//2, y),
+                heavy150,
+                gradient=[(215, 85, 79), (130, 22, 22)],
+                inner_stroke_width=4, inner_stroke_fill=(255, 255, 255),
+                stroke_width=10, stroke_fill=(0, 0, 0),
+                glow_radius=15, glow_opacity=0.5
+            )
+            y += 150
+
+        y += 50   # 行間を広めに
+
+        # ③ 薬局で買える
+        text = "薬局で買える"
+        w = self.calculate_text_width(text, heavy150, ImageDraw.Draw(bg))
+        self._draw_text_italic(
+            bg, text, y,
+            heavy150,
+            gradient=[(255, 246, 194), (255, 216, 74), (199, 154, 5)],
+            stroke_width=8, stroke_fill=(0, 0, 0),
+            bevel=True,
+            glow_radius=12, glow_opacity=0.4
         )
-        
-        # 3. 最後に赤系テキスト本体
-        draw.text(
-            (maji_x, y_positions[1]),
-            maji_text,
-            font=maji_font,
-            fill=(181, 46, 46)  # B52E2E（やや暗い赤）
+        y += 150
+
+        # ④ 神商品（少し大きめ）
+        text = "神商品"
+        w = self.calculate_text_width(text, heavy180, ImageDraw.Draw(bg))
+        self._draw_text_italic(
+            bg, text, y,
+            heavy180,
+            gradient=[(255, 246, 194), (255, 216, 74), (199, 154, 5)],
+            stroke_width=8, stroke_fill=(0, 0, 0),
+            bevel=True,
+            glow_radius=12, glow_opacity=0.4
         )
-        
-        # ---- 「使ってみて」テキストの描画 ----
-        tsukatte_width = self.calculate_text_width(tsukatte_text, tsukatte_font, draw)
-        tsukatte_x = (self.VIDEO_WIDTH - tsukatte_width) // 2
-        
-        # 同じ赤系テキストスタイルを適用
-        # 1. まず黒い外側の縁取り
-        self.apply_text_outline(
-            draw=draw,
-            text=tsukatte_text,
-            x=tsukatte_x,
-            y=y_positions[2],
-            font=tsukatte_font,
-            text_color=(0, 0, 0, 0),     # 透明（後で上書き）
-            outline_color=(0, 0, 0),     # 黒色
-            outline_width=12             # 太い外側縁取り
+        y += 230
+
+        # ⑤ 挙げてくw
+        w = self.calculate_text_width("挙げてくw", heavy80, ImageDraw.Draw(bg))
+        self.draw_text_effect(
+            bg, "挙げてくw", ((self.VIDEO_WIDTH-w)//2, y),
+            heavy80,
+            fill=(255, 255, 255),
+            stroke_width=5, stroke_fill=(0, 0, 0),
+            glow_radius=10, glow_opacity=0.2
         )
-        
-        # 2. 次に白い内側の縁取り
-        self.apply_text_outline(
-            draw=draw,
-            text=tsukatte_text,
-            x=tsukatte_x,
-            y=y_positions[2],
-            font=tsukatte_font,
-            text_color=(0, 0, 0, 0),      # 透明（後で上書き）
-            outline_color=(255, 255, 255), # 白色
-            outline_width=6                # 中程度の内側縁取り
+        y += 70
+
+        # ⑥ フッタ
+        text = "※これはブックマーク必須やで"
+        w = self.calculate_text_width(text, heavy60, ImageDraw.Draw(bg))
+        self.draw_text_effect(
+            bg, text, ((self.VIDEO_WIDTH-w)//2, y),
+            heavy60,
+            fill=(199, 22, 22),
+            inner_stroke_width=2, inner_stroke_fill=(158, 0, 0),
+            glow_radius=20, glow_opacity=0.7
         )
-        
-        # 3. 最後に赤系テキスト本体
-        draw.text(
-            (tsukatte_x, y_positions[2]),
-            tsukatte_text,
-            font=tsukatte_font,
-            fill=(181, 46, 46)  # B52E2E（やや暗い赤）
-        )
-        
-        # ---- 「欲しい」テキストの描画 ----
-        hoshii_width = self.calculate_text_width(hoshii_text, hoshii_font, draw)
-        hoshii_x = (self.VIDEO_WIDTH - hoshii_width) // 2
-        
-        # 同じ赤系テキストスタイルを適用
-        # 1. まず黒い外側の縁取り
-        self.apply_text_outline(
-            draw=draw,
-            text=hoshii_text,
-            x=hoshii_x,
-            y=y_positions[3],
-            font=hoshii_font,
-            text_color=(0, 0, 0, 0),     # 透明（後で上書き）
-            outline_color=(0, 0, 0),     # 黒色
-            outline_width=12             # 太い外側縁取り
-        )
-        
-        # 2. 次に白い内側の縁取り
-        self.apply_text_outline(
-            draw=draw,
-            text=hoshii_text,
-            x=hoshii_x,
-            y=y_positions[3],
-            font=hoshii_font,
-            text_color=(0, 0, 0, 0),      # 透明（後で上書き）
-            outline_color=(255, 255, 255), # 白色
-            outline_width=6                # 中程度の内側縁取り
-        )
-        
-        # 3. 最後に赤系テキスト本体
-        draw.text(
-            (hoshii_x, y_positions[3]),
-            hoshii_text,
-            font=hoshii_font,
-            fill=(181, 46, 46)  # B52E2E（やや暗い赤）
-        )
-        
-        # ---- 「薬局で買える」テキストの描画 ----
-        yakkyoku_width = self.calculate_text_width(yakkyoku_text, yakkyoku_font, draw)
-        yakkyoku_x = (self.VIDEO_WIDTH - yakkyoku_width) // 2
-        
-        # 金色系テキストに黒の太い縁取り
-        self.apply_text_outline(
-            draw=draw,
-            text=yakkyoku_text,
-            x=yakkyoku_x,
-            y=y_positions[4],
-            font=yakkyoku_font,
-            text_color=(255, 216, 74),  # FFD84A（金色）
-            outline_color=(0, 0, 0),     # 黒色
-            outline_width=12            # 太い縁取り
-        )
-        
-        # ---- 「神商品」テキストの描画 ----
-        shinshohin_width = self.calculate_text_width(shinshohin_text, shinshohin_font, draw)
-        shinshohin_x = (self.VIDEO_WIDTH - shinshohin_width) // 2
-        
-        # 金色系テキストに黒の太い縁取り（「神商品」はより大きく）
-        self.apply_text_outline(
-            draw=draw,
-            text=shinshohin_text,
-            x=shinshohin_x,
-            y=y_positions[5],
-            font=shinshohin_font,
-            text_color=(255, 230, 100),  # より鮮やかな金色
-            outline_color=(0, 0, 0),      # 黒色
-            outline_width=14             # より太い縁取り
-        )
-        
-        # ---- 「挙げてくw」テキストの描画 ----
-        agete_width = self.calculate_text_width(agete_text, agete_font, draw)
-        agete_x = (self.VIDEO_WIDTH - agete_width) // 2
-        
-        # 白色テキストに黒の縁取り
-        self.apply_text_outline(
-            draw=draw,
-            text=agete_text,
-            x=agete_x,
-            y=y_positions[6],
-            font=agete_font,
-            text_color=(255, 255, 255),  # 白色
-            outline_color=(0, 0, 0),      # 黒色
-            outline_width=8              # 太めの縁取り
-        )
-        
-        # ---- 「※これはブックマーク必須やで」テキストの描画 ----
-        footnote_width = self.calculate_text_width(footnote_text, footnote_font, draw)
-        footnote_x = (self.VIDEO_WIDTH - footnote_width) // 2
-        
-        # 赤系テキストに黄色の外部グロー風エフェクト
-        # 1. まず黄色の外側グロー（一番外側）
-        self.apply_text_outline(
-            draw=draw,
-            text=footnote_text,
-            x=footnote_x,
-            y=y_positions[7],
-            font=footnote_font,
-            text_color=(0, 0, 0, 0),      # 透明（後で上書き）
-            outline_color=(255, 226, 82),  # 黄色
-            outline_width=8               # 太めのグロー効果
-        )
-        
-        # 2. 次に赤系テキスト本体を重ねて描画
-        self.apply_text_outline(
-            draw=draw,
-            text=footnote_text,
-            x=footnote_x,
-            y=y_positions[7],
-            font=footnote_font,
-            text_color=(232, 74, 74),     # E84A4A（赤）
-            outline_color=(158, 0, 0),     # 9E0000（暗い赤）
-            outline_width=3               # 細めの縁取り
-        )
-        
-        return img
+
+        return bg.convert("RGB")
+
 
     def _add_comment_to_slide(
         self,
