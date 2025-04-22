@@ -432,7 +432,7 @@ class VideoMaker:
         Returns:
             Image.Image: 製品スライド画像
         """
-        img  = self._get_common_background().convert("RGB") 
+        img  = self._get_common_background() 
         draw = ImageDraw.Draw(img)
         
         # 画像読み込みの準備
@@ -485,99 +485,40 @@ class VideoMaker:
                 logger.info(f"画像を直接ダウンロードして保存: {img_path}")
             except Exception as e:
                 logger.error(f"画像ダウンロードエラー: {str(e)}")
-                img_loaded = False
-        
-        # フォント設定
-        rank_font = self.get_font(self.TITLE_FONT_SIZE * 1.3, self.noto_sans_jp_bold_path)
-        name_font = self.get_font(self.TITLE_FONT_SIZE, self.noto_sans_jp_bold_path)
-        brand_font = self.get_font(self.BRAND_FONT_SIZE, self.noto_sans_jp_path)
-        
-        # 順位表示（上部中央に配置）
-        rank_text = f"{rank}位"
-        rank_width = self.calculate_text_width(rank_text, rank_font, draw)
-        rank_x = (self.VIDEO_WIDTH - rank_width) // 2  # 中央揃え
-        rank_y = 50
-        
-        # 順位表示の背景（白色の四角形）
-        rank_padding = 20
-        rank_bg_width = rank_width + rank_padding * 2
-        rank_bg_height = self.TITLE_FONT_SIZE * 1.3 + rank_padding
-        
-        # 背景の四角形を描画
-        draw.rectangle(
-            [(rank_x - rank_padding, rank_y - rank_padding // 2), 
-            (rank_x + rank_width + rank_padding, rank_y + rank_bg_height)],
-            fill=self.TEXT_BG_COLOR  # 白色背景
+                img_loaded = False        
+        # ランク
+        rank_font = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY,
+                                       int(self.TITLE_FONT_SIZE * 2.0))   # 少し大きめ
+        rank_text = f"第{rank}位"
+
+        w = self.calculate_text_width(rank_text, rank_font, draw)
+        x = (self.VIDEO_WIDTH - w) // 2
+        y = 150
+
+        # 塗り＋外側ストローク＋ドロップシャドウ（=glow_radius で代用）
+        self.draw_text_effect(
+            img, rank_text, (x, y), rank_font,
+            fill=(0xF7, 0xF7, 0xF7),
+            stroke_width=10, stroke_fill=(0, 0, 0),
+            glow_radius=8,  glow_opacity=0.35
         )
         
-        # 順位テキストを描画
-        self.apply_text_outline(
-            draw=draw,
-            text=rank_text,
-            x=rank_x,
-            y=rank_y,
-            font=rank_font,
-            text_color=self.RANK_COLOR,
-            outline_color=self.SHADOW_COLOR,
-            outline_width=2
-        )
-        
-        # 商品名を表示（中央揃え、少し下に配置）
-        product_name = product.get('name', 'No Name')
-        brand_name = product.get('brand', 'No Brand')
-        
-        # 商品名の表示位置（中央揃え）
-        name_y = 250  # もっと下に配置
-        name_width = self.calculate_text_width(product_name, name_font, draw)
-        name_x = (self.VIDEO_WIDTH - name_width) // 2
-        
-        # 商品名の背景（白色の四角形）
-        name_padding = 20
-        name_bg_width = name_width + name_padding * 2
-        name_bg_height = self.TITLE_FONT_SIZE + name_padding
-        
-        # 背景の四角形を描画
-        draw.rectangle(
-            [(name_x - name_padding, name_y - name_padding // 2), 
-            (name_x + name_width + name_padding, name_y + name_bg_height)],
-            fill=self.TEXT_BG_COLOR  # 白色背景
-        )
-        
-        # 商品名を表示
-        self.apply_text_outline(
-            draw=draw,
-            text=product_name,
-            x=name_x,
-            y=name_y,
-            font=name_font,
-            text_color=self.TITLE_COLOR,
-            outline_color=self.SHADOW_COLOR,
-            outline_width=2
-        )
-        
-        # ブランド名の表示位置（商品名の下）
-        brand_y = name_y + self.TITLE_FONT_SIZE + 20
-        brand_width = self.calculate_text_width(brand_name, brand_font, draw)
-        brand_x = (self.VIDEO_WIDTH - brand_width) // 2
-        
-        # ブランド名の背景（白色の四角形）
-        brand_padding = 15
-        brand_bg_width = brand_width + brand_padding * 2
-        brand_bg_height = self.BRAND_FONT_SIZE + brand_padding
-        
-        # 背景の四角形を描画
-        draw.rectangle(
-            [(brand_x - brand_padding, brand_y - brand_padding // 2), 
-            (brand_x + brand_width + brand_padding, brand_y + brand_bg_height)],
-            fill=self.TEXT_BG_COLOR  # 白色背景
-        )
-        
-        # ブランド名を表示
-        draw.text(
-            (brand_x, brand_y),
-            brand_name,
-            font=brand_font,
-            fill=(50, 50, 50)  # ダークグレー
+        # 商品名
+        name_font = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY,
+                                       self.TITLE_FONT_SIZE * 1.8)
+        product_name = product.get("name", "No Name")
+
+        w = self.calculate_text_width(product_name, name_font, draw)
+        x = (self.VIDEO_WIDTH - w) // 2
+        y = 300
+
+        self.draw_text_effect(
+            img, product_name, (x, y), name_font,
+            fill=(0xB5, 0x2E, 0x2E),                       # ベースの暗赤
+            gradient=[(0xD7, 0x55, 0x4F), (0x82, 0x16, 0x16)],
+            inner_stroke_width=4,  inner_stroke_fill=(255, 255, 255),
+            stroke_width=10, stroke_fill=(0, 0, 0),
+            glow_radius=15, glow_opacity=0.50
         )
         
         # 画像を中央下部に配置
@@ -601,14 +542,14 @@ class VideoMaker:
             
             # 画像をブランド名の下に配置（さらに下に）
             img_x = (self.VIDEO_WIDTH - new_width) // 2
-            img_y = brand_y + self.BRAND_FONT_SIZE + 70  # さらに下に配置
+            img_y = y + self.BRAND_FONT_SIZE + 70  # さらに下に配置
             
             # 画像貼り付け
             img.paste(product_img, (img_x, img_y))
         except Exception as e:
             logger.error(f"画像処理エラー: {str(e)}")
         
-        return img
+        return img.convert("RGB")
     
     def _create_improved_intro_slide(self, title: str) -> Image.Image:
         bg = self._get_common_background()
@@ -745,227 +686,6 @@ class VideoMaker:
 
         return bg.convert("RGB")
 
-
-    def _add_comment_to_slide(
-        self,
-        base_slide: Image.Image,
-        product: Dict[str, Any],
-        rank: int,
-        comment: str,
-        comment_position: str,
-        comment_index: int
-    ) -> Image.Image:
-        """
-        既存のスライドにコメントを追加する（商品名とブランド名を削除）
-        参考画像のようなデザインに改良
-        
-        Args:
-            base_slide: ベースとなるスライド画像
-            product: 製品情報
-            rank: 順位
-            comment: コメントテキスト
-            comment_position: コメントの位置 ("top", "middle", "bottom")
-            comment_index: コメントのインデックス（色分け用）
-            
-        Returns:
-            Image.Image: コメントが追加されたスライド画像
-        """
-        # スライドのコピーを作成
-        slide = base_slide.copy()
-        draw = ImageDraw.Draw(slide)
-        
-        # 商品名の位置情報（上書き用）
-        name_y = 250  # _create_product_slide と同じ値
-        name_font = self.get_font(self.TITLE_FONT_SIZE, self.noto_sans_jp_bold_path)
-        product_name = product.get('name', 'No Name')
-        name_width = self.calculate_text_width(product_name, name_font, draw)
-        name_x = (self.VIDEO_WIDTH - name_width) // 2
-        
-        # 商品名の背景サイズ
-        name_padding = 20
-        name_bg_width = name_width + name_padding * 2
-        name_bg_height = self.TITLE_FONT_SIZE + name_padding
-        
-        # 商品名とその背景のみを黒い背景で上書き（削除）
-        draw.rectangle(
-            [(name_x - name_padding, name_y - name_padding // 2), 
-            (name_x + name_width + name_padding, name_y + name_bg_height)],
-            fill=self.BG_COLOR  # 黒色背景で上書き
-        )
-        
-        # ブランド名の位置情報（上書き用）
-        brand_y = name_y + self.TITLE_FONT_SIZE + 20  # _create_product_slide と同じ値
-        brand_font = self.get_font(self.BRAND_FONT_SIZE, self.noto_sans_jp_path)
-        brand_name = product.get('brand', 'No Brand')
-        brand_width = self.calculate_text_width(brand_name, brand_font, draw)
-        brand_x = (self.VIDEO_WIDTH - brand_width) // 2
-        
-        # ブランド名の背景サイズ
-        brand_padding = 15
-        brand_bg_width = brand_width + brand_padding * 2
-        brand_bg_height = self.BRAND_FONT_SIZE + brand_padding
-        
-        # ブランド名とその背景も黒い背景で上書き（削除）
-        draw.rectangle(
-            [(brand_x - brand_padding, brand_y - brand_padding // 2), 
-            (brand_x + brand_width + brand_padding, brand_y + brand_bg_height)],
-            fill=self.BG_COLOR  # 黒色背景で上書き
-        )
-        
-        # ランク表示は残す（消去された場合に備えて再描画）
-        rank_font = self.get_font(self.TITLE_FONT_SIZE * 1.7, self.noto_sans_jp_bold_path)  # ランクを少し大きく
-        rank_text = f"第{rank}位"  # "第"を追加
-        rank_width = self.calculate_text_width(rank_text, rank_font, draw)
-        rank_x = (self.VIDEO_WIDTH - rank_width) // 2  # 中央揃え
-        rank_y = 50
-        
-        # ランク表示のスタイル変更（背景なし、白文字に黒の太い縁取り）
-        self.apply_text_outline(
-            draw=draw,
-            text=rank_text,
-            x=rank_x,
-            y=rank_y,
-            font=rank_font,
-            text_color=(255, 255, 255),  # 白色
-            outline_color=(0, 0, 0),      # 黒色
-            outline_width=10              # 太い縁取り
-        )
-        
-        # フォント設定
-        # 画像を参考に、より太くて大きいフォントを使用
-        try:
-            comment_font = ImageFont.truetype("rounded-mplus-1c-extrabold.ttf", self.REVIEW_FONT_SIZE + 12)
-        except:
-            # フォントが見つからない場合は代替フォント
-            comment_font = self.get_font(self.REVIEW_FONT_SIZE + 12, self.noto_sans_jp_bold_path)
-        
-        # コメントインデックスに応じて色を設定（参考画像に合わせる）
-        if comment_index == 0:
-            box_bg_color = (255, 255, 255)  # 白背景
-            border_color = (255, 50, 50)    # 赤枠
-        elif comment_index == 1:
-            box_bg_color = (255, 255, 255)  # 白背景
-            border_color = (50, 255, 50)    # 緑枠
-        else:
-            box_bg_color = (255, 255, 255)  # 白背景
-            border_color = (50, 50, 255)    # 青枠
-        
-        # コメント位置の決定
-        y_pos_mapping = {
-            "top": int(self.VIDEO_HEIGHT * 0.25),      # 上部
-            "middle": int(self.VIDEO_HEIGHT * 0.45),   # 中央（少し上に）
-            "bottom": int(self.VIDEO_HEIGHT * 0.65)    # 下部（少し上に）
-        }
-        y_pos = y_pos_mapping[comment_position]
-        
-        # コメント幅の設定（画面の85%）
-        max_width = int(self.VIDEO_WIDTH * 0.85)
-        
-        # 改行を削除してフラットなテキストに
-        comment_text = comment.replace("\n", " ").strip()
-        comment_width = self.calculate_text_width(comment_text, comment_font, draw)
-        
-        # コメントが長い場合は折り返し
-        if comment_width > max_width:
-            # 適当な位置で折り返し
-            words = list(comment_text)
-            lines = []
-            current_line = ""
-            
-            for word in words:
-                test_line = current_line + word
-                test_width = self.calculate_text_width(test_line, comment_font, draw)
-                
-                if test_width <= max_width:
-                    current_line = test_line
-                else:
-                    lines.append(current_line)
-                    current_line = word
-            
-            if current_line:
-                lines.append(current_line)
-            
-            # 複数行のコメントを描画
-            line_height = int(self.REVIEW_FONT_SIZE * 1.6)  # 行間を少し広く
-            comment_height = line_height * len(lines)
-            
-            # コメント位置の調整（中央揃え）
-            comment_y = y_pos - comment_height // 2
-            
-            # 背景の四角を描画（参考画像に合わせて白背景に色付き枠線）
-            padding_v = 15  # 上下のパディング
-            padding_h = 25  # 左右のパディング
-            box_top = comment_y - padding_v
-            box_bottom = comment_y + comment_height + padding_v
-            box_left = (self.VIDEO_WIDTH - max_width) // 2 - padding_h
-            box_right = (self.VIDEO_WIDTH + max_width) // 2 + padding_h
-            
-            # 1. まず白い背景を描画
-            draw.rectangle(
-                [(box_left, box_top), (box_right, box_bottom)],
-                fill=box_bg_color
-            )
-            
-            # 2. 次に色付きの枠線を描画（枠線の幅を5pxに設定）
-            border_width = 5
-            for i in range(border_width):
-                draw.rectangle(
-                    [(box_left + i, box_top + i), (box_right - i, box_bottom - i)],
-                    outline=border_color
-                )
-            
-            # 各行を描画（黒色テキスト）
-            for i, line in enumerate(lines):
-                line_y = comment_y + i * line_height
-                line_width = self.calculate_text_width(line, comment_font, draw)
-                line_x = (self.VIDEO_WIDTH - line_width) // 2
-                
-                draw.text(
-                    (line_x, line_y),
-                    line,
-                    font=comment_font,
-                    fill=(0, 0, 0)  # 黒テキスト
-                )
-        else:
-            # 1行のコメント
-            comment_y = y_pos - self.REVIEW_FONT_SIZE // 2
-            comment_x = (self.VIDEO_WIDTH - comment_width) // 2
-            
-            # 背景の四角を描画（参考画像に合わせて白背景に色付き枠線）
-            padding_v = 15  # 上下のパディング
-            padding_h = 25  # 左右のパディング
-            box_width = comment_width + padding_h * 2
-            box_height = self.REVIEW_FONT_SIZE + padding_v * 2
-            
-            box_left = comment_x - padding_h
-            box_right = comment_x + comment_width + padding_h
-            box_top = comment_y - padding_v
-            box_bottom = comment_y + box_height - padding_v
-            
-            # 1. まず白い背景を描画
-            draw.rectangle(
-                [(box_left, box_top), (box_right, box_bottom)],
-                fill=box_bg_color
-            )
-            
-            # 2. 次に色付きの枠線を描画（枠線の幅を5pxに設定）
-            border_width = 5
-            for i in range(border_width):
-                draw.rectangle(
-                    [(box_left + i, box_top + i), (box_right - i, box_bottom - i)],
-                    outline=border_color
-                )
-            
-            # コメントを描画（黒色テキスト）
-            draw.text(
-                (comment_x, comment_y),
-                comment_text,
-                font=comment_font,
-                fill=(0, 0, 0)  # 黒テキスト
-            )
-        
-        return slide
-    
     def create_video(
             self,
             products: List[Dict[str, Any]],
@@ -1122,73 +842,6 @@ class VideoMaker:
                             # コメント用のベースとなるスライド（商品名とブランド名を削除済み）を作成
                             base_slide = product_slide.copy()
                             draw = ImageDraw.Draw(base_slide)
-                            
-                            # 商品名の位置情報
-                            name_y = 250  # _create_product_slide と同じ値
-                            name_font = self.get_font(self.TITLE_FONT_SIZE, self.noto_sans_jp_bold_path)
-                            name_width = self.calculate_text_width(product_name, name_font, draw)
-                            name_x = (self.VIDEO_WIDTH - name_width) // 2
-                            
-                            # 商品名の背景サイズ
-                            name_padding = 20
-                            name_bg_width = name_width + name_padding * 2
-                            name_bg_height = self.TITLE_FONT_SIZE + name_padding
-                            
-                            # 商品名をマスクする（黒色背景で上書き）
-                            draw.rectangle(
-                                [(name_x - name_padding, name_y - name_padding // 2), 
-                                (name_x + name_width + name_padding, name_y + name_bg_height)],
-                                fill=self.BG_COLOR  # 黒色背景
-                            )
-                            
-                            # ブランド名の位置情報
-                            brand_y = name_y + self.TITLE_FONT_SIZE + 20  # _create_product_slide と同じ値
-                            brand_font = self.get_font(self.BRAND_FONT_SIZE, self.noto_sans_jp_path)
-                            brand_width = self.calculate_text_width(brand_name, brand_font, draw)
-                            brand_x = (self.VIDEO_WIDTH - brand_width) // 2
-                            
-                            # ブランド名の背景サイズ
-                            brand_padding = 15
-                            brand_bg_width = brand_width + brand_padding * 2
-                            brand_bg_height = self.BRAND_FONT_SIZE + brand_padding
-                            
-                            # ブランド名もマスクする（黒色背景で上書き）
-                            draw.rectangle(
-                                [(brand_x - brand_padding, brand_y - brand_padding // 2), 
-                                (brand_x + brand_width + brand_padding, brand_y + brand_bg_height)],
-                                fill=self.BG_COLOR  # 黒色背景
-                            )
-                            
-                            # 順位表示を再描画（中央揃えで）
-                            rank_font = self.get_font(self.TITLE_FONT_SIZE * 1.3, self.noto_sans_jp_bold_path)
-                            rank_text = f"{rank}位"
-                            rank_width = self.calculate_text_width(rank_text, rank_font, draw)
-                            rank_x = (self.VIDEO_WIDTH - rank_width) // 2  # 中央揃え
-                            rank_y = 50
-                            
-                            # 順位表示の背景（白色の四角形）
-                            rank_padding = 20
-                            rank_bg_width = rank_width + rank_padding * 2
-                            rank_bg_height = self.TITLE_FONT_SIZE * 1.3 + rank_padding
-                            
-                            # 背景の四角形を描画
-                            draw.rectangle(
-                                [(rank_x - rank_padding, rank_y - rank_padding // 2), 
-                                (rank_x + rank_width + rank_padding, rank_y + rank_bg_height)],
-                                fill=self.TEXT_BG_COLOR  # 白色背景
-                            )
-                            
-                            # 順位テキストを描画
-                            self.apply_text_outline(
-                                draw=draw,
-                                text=rank_text,
-                                x=rank_x,
-                                y=rank_y,
-                                font=rank_font,
-                                text_color=self.RANK_COLOR,
-                                outline_color=self.SHADOW_COLOR,
-                                outline_width=2
-                            )
                             
                             # ベーススライドを保存
                             base_slide_path = os.path.join(temp_dir, f"product_{rank}_base_slide.png")
