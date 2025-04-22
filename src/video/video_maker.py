@@ -47,6 +47,9 @@ class VideoMaker:
     
     TEXT_BG_COLOR = (255, 255, 255)
 
+    # 背景用画像パス
+    BACKGROUND_IMAGE_PATH = "data/assets/繁華街背景.png"
+
     SOURCE_HAN_SERIF_HEAVY = "/Library/Fonts/SourceHanSerif-Heavy.otf"
     
     def __init__(
@@ -275,6 +278,31 @@ class VideoMaker:
         # すべて失敗した場合はデフォルトフォントを使用
         logger.warning("システムフォントが見つかりません。デフォルトフォントを使用します。")
         return ImageFont.load_default()
+
+    def _get_common_background(self) -> Image.Image:
+        """
+        共通背景を取得して返す。
+        ・読み込み失敗時は単色 (BG_COLOR) で代替
+        毎回ディスク I/O しないように 1 度だけ読み込んでキャッシュする
+        """
+        if not hasattr(self, "_cached_bg"):
+            try:
+                if os.path.exists(self.BACKGROUND_IMAGE_PATH):
+                    bg = Image.open(self.BACKGROUND_IMAGE_PATH).convert("RGBA")
+                    bg = self.resize_image_to_fill(bg, self.VIDEO_WIDTH, self.VIDEO_HEIGHT)
+                else:
+                    raise FileNotFoundError("背景画像が見つかりません")
+            except Exception as e:
+                logger.warning(f"背景画像の読み込みに失敗: {e}")
+                bg = Image.new("RGBA", (self.VIDEO_WIDTH, self.VIDEO_HEIGHT),
+                            (*self.BG_COLOR, 255))
+            # 読みやすさ確保のために暗色オーバーレイを被せる
+            overlay = Image.new("RGBA", bg.size, (15, 15, 35, 180))
+            bg.alpha_composite(overlay)
+            self._cached_bg = bg
+        # 呼び出し側で書き換えないようコピーを返す
+        return self._cached_bg.copy()
+
     
     def apply_text_outline(
         self, 
@@ -404,8 +432,7 @@ class VideoMaker:
         Returns:
             Image.Image: 製品スライド画像
         """
-        # 背景画像を作成（黒色）
-        img = Image.new('RGB', (self.VIDEO_WIDTH, self.VIDEO_HEIGHT), self.BG_COLOR)
+        img  = self._get_common_background().convert("RGB") 
         draw = ImageDraw.Draw(img)
         
         # 画像読み込みの準備
@@ -584,7 +611,7 @@ class VideoMaker:
         return img
     
     def _create_improved_intro_slide(self, title: str) -> Image.Image:
-        bg = Image.new("RGBA", (self.VIDEO_WIDTH, self.VIDEO_HEIGHT), (15, 15, 35, 255))
+        bg = self._get_common_background()
         # 背景のぼかし入り写真があるならここで合成しても OK
         y = int(self.VIDEO_HEIGHT * 0.06)
 
@@ -680,6 +707,41 @@ class VideoMaker:
             inner_stroke_width=2, inner_stroke_fill=(158, 0, 0),
             glow_radius=20, glow_opacity=0.7
         )
+
+        assets = [
+            ("data/assets/atsugesyou.png", "left"),   # 左下
+            ("data/assets/building_medical_pharmacy.png", "right"),  # 右下
+        ]
+
+        pad_x = int(self.VIDEO_WIDTH * 0.02)   # 画面端から 2% だけ余白
+        pad_y = int(self.VIDEO_HEIGHT * 0.02)
+
+        for path, side in assets:
+            if not os.path.exists(path):
+                logger.warning(f"装飾画像が見つかりません: {path}")
+                continue
+            try:
+                deco = Image.open(path).convert("RGBA")
+
+                # 画像を大きすぎないサイズ（画面幅 25%・高さ 25% 以内）に収める
+                max_w = int(self.VIDEO_WIDTH * 0.25)
+                max_h = int(self.VIDEO_HEIGHT * 0.25)
+                dw, dh = deco.size
+                scale = min(max_w / dw, max_h / dh, 1.0)
+                deco = deco.resize((int(dw*scale), int(dh*scale)), Image.LANCZOS)
+
+                # 貼り付け位置
+                if side == "left":
+                    pos = (pad_x, self.VIDEO_HEIGHT - deco.height - pad_y)
+                else:  # right
+                    pos = (self.VIDEO_WIDTH - deco.width - pad_x,
+                        self.VIDEO_HEIGHT - deco.height - pad_y)
+
+                bg.alpha_composite(deco, dest=pos)
+            except Exception as e:
+                logger.error(f"装飾画像の読み込み/貼り付けに失敗: {path} - {e}")
+
+        # ------------------------------------------------------------------
 
         return bg.convert("RGB")
 
@@ -1330,7 +1392,7 @@ class VideoMaker:
                         video_duration = 60.0
                     
                     # BGMを追加
-                    bgm_path = os.path.join(self.bgm_dir, "いつもの風景.mp3")
+                    bgm_path = os.path.join(self.bgm_dir, "しゅわしゅわハニーレモン.mp3")
                     if not os.path.exists(bgm_path):
                         logger.warning(f"BGMファイルが見つかりません: {bgm_path}")
                         logger.info("BGMなしで動画を出力します。")
