@@ -50,6 +50,16 @@ class VideoMaker:
     # 背景用画像パス
     BACKGROUND_IMAGE_PATH = "data/assets/繁華街背景.png"
 
+    YASASHISA_GOTHIC = "data/assets/やさしさゴシック.ttf"
+
+    COMMENT_COLORS = [
+        (0xFF, 0x4E, 0x45),   # 赤  (#ff4e45)
+        (0x45, 0xFF, 0x86),   # 緑  (#45ff86)
+        (0x48, 0x45, 0xFF),   # 青  (#4845ff)
+    ]
+    COMMENT_BORDER_PX   = 6     # 枠線の太さ
+    COMMENT_CORNER_RADIUS = 35  # 角丸半径
+
     SOURCE_HAN_SERIF_HEAVY = "/Library/Fonts/SourceHanSerif-Heavy.otf"
     
     def __init__(
@@ -485,7 +495,8 @@ class VideoMaker:
                 logger.info(f"画像を直接ダウンロードして保存: {img_path}")
             except Exception as e:
                 logger.error(f"画像ダウンロードエラー: {str(e)}")
-                img_loaded = False        
+                img_loaded = False  
+      
         # ランク
         rank_font = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY,
                                        int(self.TITLE_FONT_SIZE * 2.0))   # 少し大きめ
@@ -505,12 +516,12 @@ class VideoMaker:
         
         # 商品名
         name_font = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY,
-                                       self.TITLE_FONT_SIZE * 1.8)
+                                       int(self.TITLE_FONT_SIZE * 1.8))
         product_name = product.get("name", "No Name")
 
         w = self.calculate_text_width(product_name, name_font, draw)
         x = (self.VIDEO_WIDTH - w) // 2
-        y = 300
+        y = 400
 
         self.draw_text_effect(
             img, product_name, (x, y), name_font,
@@ -542,7 +553,7 @@ class VideoMaker:
             
             # 画像をブランド名の下に配置（さらに下に）
             img_x = (self.VIDEO_WIDTH - new_width) // 2
-            img_y = y + self.BRAND_FONT_SIZE + 70  # さらに下に配置
+            img_y = y + self.BRAND_FONT_SIZE + 200  # さらに下に配置
             
             # 画像貼り付け
             img.paste(product_img, (img_x, img_y))
@@ -857,122 +868,69 @@ class VideoMaker:
                             for i, review in enumerate(reviews[:3]):
                                 if not review:
                                     continue
-                                
+                                comment_text = str(review) 
                                 # コメント位置
                                 comment_position = positions[i % len(positions)]
                                 
                                 # コメントを累積スライドに追加
-                                comment_font = self.get_font(self.REVIEW_FONT_SIZE+ 15, self.noto_sans_jp_path)
+                                comment_font = self.get_font(
+                                    self.REVIEW_FONT_SIZE + 15,
+                                    font_path=self.YASASHISA_GOTHIC if os.path.exists(self.YASASHISA_GOTHIC) else self.noto_sans_jp_path
+                                )
                                 draw = ImageDraw.Draw(accumulated_slide)
-                                
-                                comment_text = f"{review}"
-                                comment_width = self.calculate_text_width(comment_text, comment_font, draw)
-                                
-                                # コメントインデックスに応じて色を設定
-                                if i == 0:
-                                    border_color = (255, 50, 50)  # 赤色
-                                elif i == 1:
-                                    border_color = (50, 255, 50)  # 緑色
-                                else:
-                                    border_color = (50, 50, 255)  # 青色
-                                
-                                # コメント表示位置
+
+                                # テキスト幅を調整して折り返し
+                                max_text_width = int(self.VIDEO_WIDTH * 0.78)
+                                words = list(comment_text)
+                                lines, current = [], ""
+                                for ch in words:
+                                    if self.calculate_text_width(current + ch, comment_font, draw) <= max_text_width:
+                                        current += ch
+                                    else:
+                                        lines.append(current)
+                                        current = ch
+                                if current:
+                                    lines.append(current)
+
+                                # バルーンサイズ計算
+                                line_h = int((self.REVIEW_FONT_SIZE + 15) * 1.4)
+                                text_h = line_h * len(lines)
+                                text_w = max(self.calculate_text_width(l, comment_font, draw) for l in lines)
+                                pad_x, pad_y = 40, 30
+                                box_w = text_w + pad_x * 2
+                                box_h = text_h + pad_y * 2
+
+                                # 位置決定
+                                center_x = self.VIDEO_WIDTH // 2
                                 if comment_position == "top":
-                                    y_pos = int(self.VIDEO_HEIGHT * 0.25)
+                                    box_y = int(self.VIDEO_HEIGHT * 0.18)
                                 elif comment_position == "middle":
-                                    y_pos = int(self.VIDEO_HEIGHT * 0.5)
+                                    box_y = int(self.VIDEO_HEIGHT * 0.48) - box_h // 2
                                 else:  # bottom
-                                    y_pos = int(self.VIDEO_HEIGHT * 0.75)
-                                
-                                # コメント描画（長い場合は折り返し）
-                                max_width = int(self.VIDEO_WIDTH * 0.8)
-                                if comment_width > max_width:
-                                    # 折り返し処理
-                                    words = list(comment_text)
-                                    lines = []
-                                    current_line = ""
-                                    
-                                    for word in words:
-                                        test_line = current_line + word
-                                        test_width = self.calculate_text_width(test_line, comment_font, draw)
-                                        
-                                        if test_width <= max_width:
-                                            current_line = test_line
-                                        else:
-                                            lines.append(current_line)
-                                            current_line = word
-                                    
-                                    if current_line:
-                                        lines.append(current_line)
-                                    
-                                    # 複数行の描画
-                                    line_height = int(self.REVIEW_FONT_SIZE * 1.5)
-                                    comment_height = line_height * len(lines)
-                                    
-                                    if comment_position == "top":
-                                        comment_y = y_pos
-                                    elif comment_position == "middle":
-                                        comment_y = y_pos - comment_height // 2
-                                    else:  # bottom
-                                        comment_y = y_pos - comment_height
-                                    
-                                    # 背景の四角を描画
-                                    padding = 25
-                                    box_top = comment_y - padding
-                                    box_bottom = comment_y + comment_height + padding
-                                    box_left = (self.VIDEO_WIDTH - max_width) // 2 - padding
-                                    box_right = (self.VIDEO_WIDTH + max_width) // 2 + padding
-                                    
-                                    draw.rectangle(
-                                        [(box_left, box_top), (box_right, box_bottom)],
-                                        fill=self.TEXT_BG_COLOR,
-                                        outline=border_color,
-                                        width=5
-                                    )
-                                    
-                                    # 各行を描画
-                                    for j, line in enumerate(lines):
-                                        line_y = comment_y + j * line_height
-                                        line_width = self.calculate_text_width(line, comment_font, draw)
-                                        line_x = (self.VIDEO_WIDTH - line_width) // 2
-                                        
-                                        draw.text(
-                                            (line_x, line_y),
-                                            line,
-                                            font=comment_font,
-                                            fill=self.TEXT_COLOR
-                                        )
-                                else:
-                                    # 1行のコメント
-                                    if comment_position == "top":
-                                        comment_y = y_pos
-                                    elif comment_position == "middle":
-                                        comment_y = y_pos - self.REVIEW_FONT_SIZE // 2
-                                    else:  # bottom
-                                        comment_y = y_pos - self.REVIEW_FONT_SIZE
-                                    
-                                    comment_x = (self.VIDEO_WIDTH - comment_width) // 2
-                                    
-                                    # 背景の四角を描画
-                                    padding = 20
-                                    box_width = comment_width + padding * 2
-                                    box_height = self.REVIEW_FONT_SIZE + padding * 2
-                                    
-                                    draw.rectangle(
-                                        [(comment_x - padding, comment_y - padding), 
-                                        (comment_x + comment_width + padding, comment_y + box_height - padding)],
-                                        fill=self.TEXT_BG_COLOR,
-                                        outline=border_color,
-                                        width=5
-                                    )
-                                    
-                                    # コメントを描画
-                                    draw.text(
-                                        (comment_x, comment_y),
-                                        comment_text,
-                                        font=comment_font,
-                                        fill=self.TEXT_COLOR
-                                    )
+                                    box_y = int(self.VIDEO_HEIGHT * 0.78) - box_h
+
+                                box_x = center_x - box_w // 2
+
+                                # バルーン（角丸長方形）を描画
+                                border_col = self.COMMENT_COLORS[i % 3]
+                                rect = [
+                                    (box_x, box_y),
+                                    (box_x + box_w, box_y + box_h)
+                                ]
+                                # Pillow ≥ 9.2 なら rounded_rectangle が使える
+                                draw.rounded_rectangle(
+                                    rect,
+                                    radius=self.COMMENT_CORNER_RADIUS,
+                                    fill=(255, 255, 255),
+                                    outline=border_col,
+                                    width=self.COMMENT_BORDER_PX
+                                )
+
+                                # テキスト描画
+                                for idx, line in enumerate(lines):
+                                    tx = center_x - self.calculate_text_width(line, comment_font, draw) // 2
+                                    ty = box_y + pad_y + idx * line_h
+                                    draw.text((tx, ty), line, font=comment_font, fill=(0, 0, 0))
                                 
                                 # 現在の累積スライドを保存（コメント追加後）
                                 comment_slide_path = os.path.join(temp_dir, f"product_{rank}_comment_{i+1}.png")
