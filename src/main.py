@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 @file: main.py
-@desc: アットコスメランキングを元にショート動画を自動生成するメインスクリプト
+@desc: ショート動画を自動生成するメインスクリプト
 """
 
 import os

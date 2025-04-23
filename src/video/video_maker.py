@@ -16,6 +16,7 @@ from io import BytesIO
 import shutil
 import re
 import sys
+import unicodedata
 
 # 音声関連のユーティリティをインポート
 # sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
@@ -232,6 +233,44 @@ class VideoMaker:
             base.alpha_composite(glow_layer)
 
         base.alpha_composite(txt_layer)
+
+    def _prepare_product_name(self, raw: str) -> list[str]:
+        """
+        ・全半角スペースで 2 分割（最大 2 行）
+        ・() または <> で囲まれた部分を *丸ごと* 削除
+        ・行ごとに前後スペースを削除
+        ・3 行以上になる場合は 2 行で打ち切り
+        """
+        if not raw:
+            return ["No Name"]
+
+        # ① かっこ内を除去
+        text = re.sub(r"[\(\<].*?[\)\>]", "", raw)
+
+        # ② 全角スペースを半角に統一
+        text = text.replace("　", " ")
+
+        # ③ 連続スペースを 1 個に
+        text = re.sub(r"\s+", " ", text).strip()
+
+        # ④ スペースで split（最大 2 行）
+        parts = text.split(" ", 1)
+        return parts[:2]
+
+    def _name_font_size(self, text_len: int) -> int:
+        """
+        文字数でサイズを粗く段階分け  
+        （基準 ≒ 8 文字のとき self.TITLE_FONT_SIZE * 1.8）
+        """
+        base = int(self.TITLE_FONT_SIZE * 1.8)   # 現行サイズ
+        if text_len <= 6:
+            return base + 16          # 少ない ⇒ 大
+        elif text_len <= 9:
+            return base               # 標準
+        elif text_len <= 12:
+            return base - 16           # やや小
+        else:
+            return base - 32          # もっと小
     
     def get_font(self, size: int, font_path: str = None) -> ImageFont.FreeTypeFont:
         """
@@ -430,7 +469,8 @@ class VideoMaker:
     def _create_product_slide(
         self,
         product: Dict[str, Any],
-        rank: int
+        rank: int,
+        show_name: bool = True
     ) -> Image.Image:
         """
         製品スライドの作成（画像と商品名のみ表示）
@@ -515,22 +555,45 @@ class VideoMaker:
         )
         
         # 商品名
-        name_font = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY,
-                                       int(self.TITLE_FONT_SIZE * 1.8))
-        product_name = product.get("name", "No Name")
+        if show_name:
+            name_lines = self._prepare_product_name(product.get("name", "No Name"))
 
-        w = self.calculate_text_width(product_name, name_font, draw)
-        x = (self.VIDEO_WIDTH - w) // 2
-        y = 400
+            # 行数によって縦位置を少し調整（中央寄りになるように）
+            start_y = 400 - (len(name_lines)-1)*50
 
-        self.draw_text_effect(
-            img, product_name, (x, y), name_font,
-            fill=(0xB5, 0x2E, 0x2E),                       # ベースの暗赤
-            gradient=[(0xD7, 0x55, 0x4F), (0x82, 0x16, 0x16)],
-            inner_stroke_width=4,  inner_stroke_fill=(255, 255, 255),
-            stroke_width=10, stroke_fill=(0, 0, 0),
-            glow_radius=15, glow_opacity=0.50
-        )
+            for idx, line in enumerate(name_lines):
+                text_len = len(line.replace(" ", ""))
+                font_size = self._name_font_size(text_len)
+                name_font = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY, font_size)
+
+                w = self.calculate_text_width(line, name_font, draw)
+                x = (self.VIDEO_WIDTH - w) // 2
+                y = start_y + idx * (font_size + 20)   # 行間 20px
+
+                self.draw_text_effect(
+                    img, line, (x, y), name_font,
+                    fill=(0xB5, 0x2E, 0x2E),
+                    gradient=[(0xD7, 0x55, 0x4F), (0x82, 0x16, 0x16)],
+                    inner_stroke_width=4,  inner_stroke_fill=(255, 255, 255),
+                    stroke_width=10, stroke_fill=(0, 0, 0),
+                    glow_radius=15, glow_opacity=0.50
+                )
+            name_block_bottom = y + font_size
+        else:
+            name_lines = self._prepare_product_name(product.get("name", "No Name"))
+
+            # 描画開始 Y 座標（show_name=True 時と同式）
+            start_y = 400 - (len(name_lines)-1) * 50
+
+            current_y = start_y
+            for idx, line in enumerate(name_lines):
+                text_len  = len(line.replace(" ", ""))
+                font_size = self._name_font_size(text_len)
+                if idx == len(name_lines) - 1:
+                    # 最終行の下端を基準にする
+                    name_block_bottom = current_y + font_size
+                # 次行の Y を計算（行間は 20px で固定）
+                current_y += font_size + 20
         
         # 画像を中央下部に配置
         try:
@@ -551,9 +614,9 @@ class VideoMaker:
             # リサイズ
             product_img = product_img.resize((new_width, new_height), Image.LANCZOS)
             
-            # 画像をブランド名の下に配置（さらに下に）
+            # 画像をブランド名の下に配置
             img_x = (self.VIDEO_WIDTH - new_width) // 2
-            img_y = y + self.BRAND_FONT_SIZE + 200  # さらに下に配置
+            img_y = name_block_bottom + 250
             
             # 画像貼り付け
             img.paste(product_img, (img_x, img_y))
@@ -802,15 +865,13 @@ class VideoMaker:
                         product_intro_text = f"{rank}位、{brand_name}の{product_name}"
                         
                         # 1. 製品画像と商品名のみを表示したスライド生成
-                        product_slide = self._create_product_slide(product, rank)
+                        product_slide = self._create_product_slide(product, rank, show_name=True)
                         product_slide_path = os.path.join(temp_dir, f"product_{rank}_slide.png")
                         product_slide.save(product_slide_path)
                         
                         # 製品紹介ナレーション音声を生成
                         product_audio_path = os.path.join(temp_dir, f"product_{rank}_audio.wav")
-                        
-                        # 必ず音声を生成するか確認するためのログ
-                        success = generate_narration(product_intro_text, product_audio_path, "random")
+                        _ = generate_narration(product_intro_text, product_audio_path, "random")
                         
                         # 製品画像の動画セグメントを作成
                         product_video_path = os.path.join(temp_dir, f"product_{rank}_video.mp4")
@@ -851,7 +912,7 @@ class VideoMaker:
                         # コメントを順番に追加していく
                         if reviews:
                             # コメント用のベースとなるスライド（商品名とブランド名を削除済み）を作成
-                            base_slide = product_slide.copy()
+                            base_slide = self._create_product_slide(product, rank, show_name=False)
                             draw = ImageDraw.Draw(base_slide)
                             
                             # ベーススライドを保存
