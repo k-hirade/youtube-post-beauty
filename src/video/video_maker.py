@@ -236,26 +236,41 @@ class VideoMaker:
 
     def _prepare_product_name(self, raw: str) -> list[str]:
         """
-        ・全半角スペースで 2 分割（最大 2 行）
-        ・() または <> で囲まれた部分を *丸ごと* 削除
-        ・行ごとに前後スペースを削除
-        ・3 行以上になる場合は 2 行で打ち切り
+        1) () または <> （半角／全角）で囲まれた部分を丸ごと削除  
+        2) 全角スペース→半角スペースに揃え、連続スペースを 1 個に  
+        3) 半角スペースでいったんトークン分割  
+        4) トークンを左から詰め、**8 文字**を超えない範囲で行を生成  
+        5) 先頭 2 行を返す（行が足りなければそのまま）
         """
         if not raw:
             return ["No Name"]
 
-        # ① かっこ内を除去
-        text = re.sub(r"[\(\<].*?[\)\>]", "", raw)
+        # ① ()<> を削除（全角・半角両対応）
+        raw = re.sub(r"[（(＜<].*?[）)>＞>]", "", raw)
 
-        # ② 全角スペースを半角に統一
-        text = text.replace("　", " ")
+        # ② スペース正規化
+        raw = re.sub(r"\s+", " ", raw.replace("　", " ")).strip()
+        if not raw:
+            return ["No Name"]
 
-        # ③ 連続スペースを 1 個に
-        text = re.sub(r"\s+", " ", text).strip()
+        # ③ 半角スペースでトークン化
+        tokens = raw.split(" ")
 
-        # ④ スペースで split（最大 2 行）
-        parts = text.split(" ", 1)
-        return parts[:2]
+        # ④ 8 文字以内で行を組み立て
+        lines, current = [], ""
+        for tok in tokens:
+            if len(current + tok) <= 8:
+                current += tok
+            else:
+                if current:
+                    lines.append(current)
+                current = tok
+            if len(lines) == 2:
+                break
+        if current and len(lines) < 2:
+            lines.append(current)
+
+        return lines if lines else ["No Name"]
 
     def _name_font_size(self, text_len: int) -> int:
         """
@@ -264,13 +279,23 @@ class VideoMaker:
         """
         base = int(self.TITLE_FONT_SIZE * 1.8)   # 現行サイズ
         if text_len <= 6:
-            return base + 16          # 少ない ⇒ 大
+            return base + 20          # 少ない ⇒ 大
         elif text_len <= 9:
             return base               # 標準
         elif text_len <= 12:
-            return base - 16           # やや小
+            return base - 25           # やや小
         else:
-            return base - 32          # もっと小
+            return base - 40          # もっと小
+        
+    def _calc_name_block_bottom(self, start_y: int, lines: list[str]) -> int:
+        """商品名ブロックの下端 Y 座標を返す"""
+        total_h = 0
+        for idx, line in enumerate(lines):
+            fs = self._name_font_size(len(line.replace(" ", "")))
+            total_h += fs
+            if idx < len(lines) - 1:
+                total_h += 80          # 行間
+        return start_y + total_h
     
     def get_font(self, size: int, font_path: str = None) -> ImageFont.FreeTypeFont:
         """
@@ -351,7 +376,6 @@ class VideoMaker:
             self._cached_bg = bg
         # 呼び出し側で書き換えないようコピーを返す
         return self._cached_bg.copy()
-
     
     def apply_text_outline(
         self, 
@@ -554,22 +578,22 @@ class VideoMaker:
             glow_radius=8,  glow_opacity=0.35
         )
         
+        name_lines = self._prepare_product_name(product.get("name", "No Name"))
+        start_y    = 400 - (len(name_lines)-1)*40
+        name_block_bottom = self._calc_name_block_bottom(start_y, name_lines)
+        empty_height = 80
+
         # 商品名
         if show_name:
-            name_lines = self._prepare_product_name(product.get("name", "No Name"))
-
-            # 行数によって縦位置を少し調整（中央寄りになるように）
-            start_y = 400 - (len(name_lines)-1)*50
-
-            for idx, line in enumerate(name_lines):
-                text_len = len(line.replace(" ", ""))
+            current_y = start_y 
+            for line in name_lines:
+                text_len  = len(line.replace(" ", ""))
                 font_size = self._name_font_size(text_len)
                 name_font = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY, font_size)
 
                 w = self.calculate_text_width(line, name_font, draw)
                 x = (self.VIDEO_WIDTH - w) // 2
-                y = start_y + idx * (font_size + 20)   # 行間 20px
-
+                y = current_y
                 self.draw_text_effect(
                     img, line, (x, y), name_font,
                     fill=(0xB5, 0x2E, 0x2E),
@@ -578,22 +602,15 @@ class VideoMaker:
                     stroke_width=10, stroke_fill=(0, 0, 0),
                     glow_radius=15, glow_opacity=0.50
                 )
-            name_block_bottom = y + font_size
+                current_y += font_size + empty_height
+
         else:
-            name_lines = self._prepare_product_name(product.get("name", "No Name"))
-
-            # 描画開始 Y 座標（show_name=True 時と同式）
-            start_y = 400 - (len(name_lines)-1) * 50
-
+            # show_name=False の分岐はそのままで OK
             current_y = start_y
-            for idx, line in enumerate(name_lines):
+            for line in name_lines:
                 text_len  = len(line.replace(" ", ""))
                 font_size = self._name_font_size(text_len)
-                if idx == len(name_lines) - 1:
-                    # 最終行の下端を基準にする
-                    name_block_bottom = current_y + font_size
-                # 次行の Y を計算（行間は 20px で固定）
-                current_y += font_size + 20
+                current_y += font_size + empty_height
         
         # 画像を中央下部に配置
         try:
@@ -871,7 +888,7 @@ class VideoMaker:
                         
                         # 製品紹介ナレーション音声を生成
                         product_audio_path = os.path.join(temp_dir, f"product_{rank}_audio.wav")
-                        _ = generate_narration(product_intro_text, product_audio_path, "random")
+                        success = generate_narration(product_intro_text, product_audio_path, "random")
                         
                         # 製品画像の動画セグメントを作成
                         product_video_path = os.path.join(temp_dir, f"product_{rank}_video.mp4")
