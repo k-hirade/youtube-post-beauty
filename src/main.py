@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 @file: main.py
-@desc: ショート動画を自動生成するメインスクリプト（ランキングタイプ対応版）
+@desc: ショート動画を自動生成するメインスクリプト
 """
 
 import os
@@ -65,8 +65,8 @@ def parse_args():
                         help='対象ジャンル')
     
     parser.add_argument('--ranking-type', type=str, default='最新',
-                        choices=['最新', 'お好み', '急上昇', '年代', '肌質'],
-                        help='ランキングの種類')
+                        choices=['最新', 'お好み'],
+                        help='最初に試すランキングの種類')
     
     parser.add_argument('--min-products', type=int, default=7,
                         help='最小必要製品数')
@@ -84,6 +84,9 @@ def parse_args():
     parser.add_argument('--dry-run', action='store_true',
                         help='実際の動画を作成せずテスト実行')
     
+    parser.add_argument('--use-alternative-ranking', action='store_true',
+                        help='十分な製品数が集まらない場合、代替ランキングタイプも試す')
+    
     parser.add_argument('--verbose', '-v', action='store_true',
                         help='詳細なログを出力')
     
@@ -91,13 +94,13 @@ def parse_args():
 
 def run_pipeline(args):
     """メインパイプラインの実行"""
-    logger.info(f"処理開始: {args.channel} × {args.genre}")
+    logger.info(f"処理開始: {args.channel} × {args.genre} × {args.ranking_type}")
     
     # 1. データベース初期化
     db = CosmeDatabase(args.db_path)
     
     # 2. 新しい実行レコードの作成
-    run_id = db.create_run(args.genre, args.channel)
+    run_id = db.create_run(args.genre, args.channel, args.ranking_type)
     if not run_id:
         logger.error("実行レコードの作成に失敗しました。")
         return False
@@ -106,18 +109,33 @@ def run_pipeline(args):
         # 3. スクレイパーの初期化と実行
         scraper = CosmeNetScraper()
         logger.info("ランキング取得開始")
-        products = scraper.get_products_by_criteria(
-            channel=args.channel,
-            genre=args.genre,
-            min_count=args.min_products
-        )
         
-        if not products or len(products) < args.min_products:
-            logger.error(f"十分な製品({args.min_products}個)が見つかりませんでした: {len(products)}個")
-            db.update_run_status(run_id, "error")
-            return False
-        
-        logger.info(f"製品取得完了: {len(products)}個")
+        if args.use_alternative_ranking:
+            logger.info("代替ランキングタイプの使用が有効です")
+            products = scraper.get_products_by_criteria(
+                channel=args.channel,
+                genre=args.genre,
+                ranking_type=args.ranking_type,
+                min_count=args.min_products
+            )
+        else:
+            logger.info("単一ランキングタイプからの収集のみを行います")
+            # 単一ランキングタイプからのみ収集する場合は古い方法を使用
+            products = []
+            for page in range(1, 6):
+                if len(products) >= args.min_products:
+                    break
+                
+                page_products = scraper.get_ranking_products(
+                    channel=args.channel,
+                    genre=args.genre,
+                    ranking_type=args.ranking_type,
+                    week=0,
+                    page=page
+                )
+                
+                products.extend(page_products)
+                logger.info(f"ページ{page}: {len(page_products)}個取得、合計{len(products)}個")
         
         # 4. 製品情報をデータベースに保存
         success_count = db.save_products(products)
@@ -239,6 +257,13 @@ def main():
     # ロギング設定
     log_level = logging.DEBUG if args.verbose else logging.INFO
     setup_logging(args.log_file, log_level)
+    
+    # 代替ランキングタイプ使用の情報をログに残す
+    if args.use_alternative_ranking:
+        alternative_ranking = "お好み" if args.ranking_type == "最新" else "最新"
+        logger.info(f"代替ランキングタイプ使用モードが有効です。必要に応じて「{alternative_ranking}」ランキングタイプの製品も収集します。")
+    else:
+        logger.info(f"単一ランキングタイプモード: {args.ranking_type}")
     
     # パイプライン実行
     success = run_pipeline(args)

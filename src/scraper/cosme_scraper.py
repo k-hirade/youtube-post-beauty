@@ -1,6 +1,6 @@
 """
 @file: cosme_scraper.py
-@desc: アットコスメのランキングをスクレイピングするモジュール（ランキングタイプ対応版）
+@desc: アットコスメのランキングをスクレイピングするモジュール
 """
 
 import time
@@ -109,7 +109,7 @@ class CosmeNetScraper:
             if carousel_box:
                 main_li = carousel_box.select_one("li.main_img a[href]")
                 main_img_li = carousel_box.select_one("li.main_img")
-                img_tag = main_img_li.select_one("img")
+                img_tag = main_img_li.select_one("img") if main_img_li else None
                 main_image = img_tag['src'] if img_tag else None
                 if main_li:
                     variation_url = urljoin(self.BASE_URL, main_li["href"].split("#")[0])
@@ -437,36 +437,36 @@ class CosmeNetScraper:
             updated_products.append(product)
         
         return updated_products
-        
-    def get_products_by_criteria(
-        self, 
+    
+    def _collect_products_from_ranking_type(
+        self,
         channel: str,
         genre: str,
-        ranking_type: str = "最新",
-        min_count: int = 7,
+        ranking_type: str,
+        min_count: int,
+        existing_ids: set,
+        max_pages: int = 5,
         max_weeks_back: int = 3
     ) -> List[Dict[str, Any]]:
         """
-        基準を満たす製品リストを取得
+        特定のランキングタイプから製品を収集する
         
         Args:
             channel: チャンネル名
             genre: ジャンル名
-            ranking_type: ランキングの種類
+            ranking_type: ランキングタイプ
             min_count: 必要な最小製品数
-            max_weeks_back: 最大遡る週数
-        
+            existing_ids: 既存の製品IDセット（重複を避けるため）
+            max_pages: チェックする最大ページ数
+            max_weeks_back: 遡る最大週数
+            
         Returns:
-            製品情報リスト
+            収集された製品リスト
         """
         collected_products = []
-        existing_ids = set()
-        
-        # デバッグ: 開始情報
-        logger.debug(f"製品収集開始: チャンネル={channel}, ジャンル={genre}, ランキング={ranking_type}, 最小数={min_count}")
         
         # まず現在の週の複数ページをチェック
-        for page in range(1, 6):  # page=1からpage=5まで
+        for page in range(1, max_pages + 1):
             if len(collected_products) >= min_count:
                 break
                 
@@ -481,18 +481,12 @@ class CosmeNetScraper:
             # 重複を避けるためにフィルタリング
             new_products = [p for p in products if p["product_id"] not in existing_ids]
             
-            # 詳細なデバッグ: 新製品情報
-            for p in new_products:
-                logger.debug(f"新規追加製品: ID={p['product_id']}, {p['brand']} {p['name']}")
-                logger.debug(f"  カテゴリ: {p.get('categories', [])}")
-            
             # 既存IDセットを更新
-            new_ids = [p["product_id"] for p in new_products]
-            existing_ids.update(new_ids)
-            logger.debug(f"新規追加ID: {new_ids}")
+            for p in new_products:
+                existing_ids.add(p["product_id"])
             
             collected_products.extend(new_products)
-            logger.info(f"現在の週 ページ{page}: {len(new_products)}個追加、合計{len(collected_products)}個")
+            logger.info(f"ランキング「{ranking_type}」 現在の週 ページ{page}: {len(new_products)}個追加、合計{len(collected_products)}個")
             
             # 次ページをチェックする前に少し待機
             time.sleep(self.rate_limit)
@@ -514,18 +508,12 @@ class CosmeNetScraper:
                 # 重複を避けるためにフィルタリング
                 new_products = [p for p in products if p["product_id"] not in existing_ids]
                 
-                # 詳細なデバッグ: 新製品情報（過去週）
-                for p in new_products:
-                    logger.debug(f"過去週{week}から追加製品: ID={p['product_id']}, {p['brand']} {p['name']}")
-                    logger.debug(f"  カテゴリ: {p.get('categories', [])}")
-                
                 # 既存IDセットを更新
-                new_ids = [p["product_id"] for p in new_products]
-                existing_ids.update(new_ids)
-                logger.debug(f"過去週{week}から新規追加ID: {new_ids}")
+                for p in new_products:
+                    existing_ids.add(p["product_id"])
                 
                 collected_products.extend(new_products)
-                logger.info(f"週{week} ページ{page}: {len(new_products)}個追加、合計{len(collected_products)}個")
+                logger.info(f"ランキング「{ranking_type}」 週{week} ページ{page}: {len(new_products)}個追加、合計{len(collected_products)}個")
                 
                 if len(collected_products) >= min_count:
                     break
@@ -533,8 +521,80 @@ class CosmeNetScraper:
                 # 次ページをチェックする前に少し待機
                 time.sleep(self.rate_limit)
         
-        # 最低要件を満たさない場合
+        return collected_products
+        
+    def get_products_by_criteria(
+        self, 
+        channel: str,
+        genre: str,
+        ranking_type: str = "最新",
+        min_count: int = 7,
+        max_weeks_back: int = 3
+    ) -> List[Dict[str, Any]]:
+        """
+        基準を満たす製品リストを取得（最新とお好みのランキングタイプから検索）
+        
+        Args:
+            channel: チャンネル名
+            genre: ジャンル名
+            ranking_type: 最初に試すランキングの種類
+            min_count: 必要な最小製品数
+            max_weeks_back: 最大遡る週数
+        
+        Returns:
+            製品情報リスト
+        """
+        collected_products = []
+        existing_ids = set()
+        
+        # デバッグ: 開始情報
+        logger.debug(f"製品収集開始: チャンネル={channel}, ジャンル={genre}, ランキング={ranking_type}, 最小数={min_count}")
+        
+        # 最初に指定されたランキングタイプで試す
+        first_ranking_products = self._collect_products_from_ranking_type(
+            channel=channel,
+            genre=genre,
+            ranking_type=ranking_type,
+            min_count=min_count,
+            existing_ids=existing_ids,
+            max_weeks_back=max_weeks_back
+        )
+        
+        collected_products.extend(first_ranking_products)
+        
+        # 必要な数に達していなければ、もう一方のランキングタイプも試す
         if len(collected_products) < min_count:
+            # 指定されたのが「最新」なら「お好み」を、「お好み」なら「最新」を試す
+            alternative_ranking_type = "お好み" if ranking_type == "最新" else "最新"
+            
+            logger.info(f"指定ランキング「{ranking_type}」からは十分な製品が見つかりませんでした ({len(collected_products)}/{min_count})。「{alternative_ranking_type}」ランキングも試します。")
+            
+            additional_products = self._collect_products_from_ranking_type(
+                channel=channel,
+                genre=genre,
+                ranking_type=alternative_ranking_type,
+                min_count=min_count - len(collected_products),  # 残り必要な数
+                existing_ids=existing_ids,
+                max_pages=3,  # 追加ランキングタイプでは少ないページ数に制限
+                max_weeks_back=1  # 追加ランキングタイプでは過去の週は最小限に
+            )
+            
+            collected_products.extend(additional_products)
+            logger.info(f"ランキングタイプ「{alternative_ranking_type}」から{len(additional_products)}個の製品を追加。合計: {len(collected_products)}個")
+        
+        # 最終結果のログ出力
+        if len(collected_products) >= min_count:
+            logger.info(f"必要な製品数 ({min_count}個) を収集できました。合計: {len(collected_products)}個")
+            
+            # 収集製品のランキングタイプ統計
+            ranking_type_counts = {}
+            for p in collected_products:
+                rt = p.get("ranking_type", "不明")
+                ranking_type_counts[rt] = ranking_type_counts.get(rt, 0) + 1
+            
+            for rt, count in ranking_type_counts.items():
+                logger.info(f"ランキングタイプ「{rt}」: {count}個")
+        else:
             logger.warning(
                 f"必要な製品数（{min_count}個）を収集できませんでした。"
                 f"現在: {len(collected_products)}個"
@@ -544,9 +604,7 @@ class CosmeNetScraper:
                 for i, p in enumerate(collected_products, 1):
                     logger.debug(f"{i}. ID={p['product_id']}, {p['brand']} {p['name']}")
                     logger.debug(f"  カテゴリ: {p.get('categories', [])}")
-                    logger.debug(f"  画像URL: {p.get('image_url', 'なし')}")
-                    logger.debug(f"  製品URL: {p.get('product_url', 'なし')}")
-                    logger.debug(f"  ブランドURL: {p.get('brand_url', 'なし')}")
+                    logger.debug(f"  ランキングタイプ: {p.get('ranking_type', '不明')}")
                 
                 product_names = [f"{p['brand']} {p['name']}" for p in collected_products]
                 logger.info(f"収集された製品: {', '.join(product_names)}")
