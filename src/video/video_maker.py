@@ -466,7 +466,7 @@ class VideoMaker:
         img_width, img_height = img.size
         
         # 小さい画像（180x180など）の場合は、そのまま使用して拡大する
-        if img_width <= 200 and img_height <= 200:
+        if img_width <= 400 and img_height <= 400:
             # 画面の80%の幅に拡大
             target_width = int(self.VIDEO_WIDTH * 0.8)
             target_height = int(target_width * img_height / img_width)

@@ -92,25 +92,29 @@ class CosmeNetScraper:
             soup = BeautifulSoup(html, 'html.parser')
             
             # 製品画像のURLを取得
-            main_image = None
+            main_image: Optional[str] = None
+
             carousel_box = soup.select_one(".carousel-box")
             if carousel_box:
-                # メイン画像（class="main_img"を持つ要素）を探す
+                main_li = carousel_box.select_one("li.main_img a[href]")
                 main_img_li = carousel_box.select_one("li.main_img")
-                if main_img_li:
-                    img_tag = main_img_li.select_one("img")
-                    if img_tag and 'src' in img_tag.attrs:
-                        main_image = img_tag['src']
-                
-                # メイン画像が見つからない場合は最初の画像を使用
-                if not main_image:
-                    first_img = carousel_box.select_one("ul.pict-list li img")
-                    if first_img and 'src' in first_img.attrs:
-                        main_image = first_img['src']
-            
-            # 画像が見つからない場合のフォールバック
+                img_tag = main_img_li.select_one("img")
+                main_image = img_tag['src']
+                if main_li:
+                    variation_url = urljoin(self.BASE_URL, main_li["href"].split("#")[0])
+                    try:
+                        variation_html = self.get_page(variation_url)
+                        variation_soup = BeautifulSoup(variation_html, "html.parser")
+
+                        md_img = variation_soup.select_one("p#mdImg img[src]")
+                        if md_img:
+                            main_image = md_img["src"]
+                    except Exception as e:
+                        logger.warning(f"バリエーションページ取得エラー: {variation_url} / {e}")
+
             if not main_image:
-                logger.warning(f"製品ID {product_id} の画像が見つかりません。")
+                first_img = soup.select_one(".carousel-box ul.pict-list li img[src]")
+                main_image = first_img["src"] if first_img else None
                 
             # ブランド情報を取得
             brand_info = {}
