@@ -1,6 +1,6 @@
 """
 @file: cosme_scraper.py
-@desc: アットコスメのPチャンネルランキングをスクレイピングするモジュール（詳細デバッグログ追加版）
+@desc: アットコスメのランキングをスクレイピングするモジュール（ランキングタイプ対応版）
 """
 
 import time
@@ -14,7 +14,7 @@ import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 
-from scraper.config_categories import CATEGORY_MAP, CHANNEL_MAP
+from scraper.config_categories import CATEGORY_MAP, CHANNEL_MAP, RANKING_TYPE_MAP
 
 # ロガー設定
 logger = logging.getLogger(__name__)
@@ -23,7 +23,6 @@ class CosmeNetScraper:
     """アットコスメのランキングページをスクレイピングするクラス"""
     
     BASE_URL = "https://www.cosme.net"
-    RANKING_BASE_URL = "https://www.cosme.net/categories/pchannel/2/ranking/"
     
     def __init__(self, rate_limit: float = 1.0):
         """
@@ -39,9 +38,26 @@ class CosmeNetScraper:
         })
         self.last_request_time = 0
         
-        # 設定ファイルからカテゴリーマッピングをロード
+        # 設定ファイルからマッピングをロード
         self.CATEGORY_MAP = CATEGORY_MAP
         self.CHANNEL_MAP = CHANNEL_MAP
+        self.RANKING_TYPE_MAP = RANKING_TYPE_MAP
+    
+    def _get_ranking_base_url(self, channel: str, ranking_type: str = "最新") -> str:
+        """
+        ランキングのベースURLを構築
+        
+        Args:
+            channel: チャンネル名（例：スーパー、コンビニ）
+            ranking_type: ランキングの種類（例：最新、お好み、急上昇）
+            
+        Returns:
+            ランキングページのベースURL
+        """
+        channel_id = self.CHANNEL_MAP.get(channel, "2")  # デフォルトはスーパー
+        ranking_suffix = self.RANKING_TYPE_MAP.get(ranking_type, "ranking")  # デフォルトは最新
+        
+        return f"{self.BASE_URL}/categories/pchannel/{channel_id}/{ranking_suffix}/"
     
     def _respect_rate_limit(self):
         """レート制限を遵守するために必要に応じて待機"""
@@ -94,7 +110,7 @@ class CosmeNetScraper:
                 main_li = carousel_box.select_one("li.main_img a[href]")
                 main_img_li = carousel_box.select_one("li.main_img")
                 img_tag = main_img_li.select_one("img")
-                main_image = img_tag['src']
+                main_image = img_tag['src'] if img_tag else None
                 if main_li:
                     variation_url = urljoin(self.BASE_URL, main_li["href"].split("#")[0])
                     try:
@@ -292,6 +308,7 @@ class CosmeNetScraper:
         self, 
         channel: str,
         genre: str,
+        ranking_type: str = "最新",
         week: int = 0,
         page: int = 1
     ) -> List[Dict[str, Any]]:
@@ -301,6 +318,7 @@ class CosmeNetScraper:
         Args:
             channel: チャンネル名
             genre: ジャンル名
+            ranking_type: ランキングタイプ（最新、お好み、急上昇、etc.）
             week: 何週前のランキングか（0=今週、1=先週、...）
             page: ページ番号
         
@@ -308,10 +326,14 @@ class CosmeNetScraper:
             製品情報の辞書リスト
         """
         # ランキングURL構築
+        base_url = self._get_ranking_base_url(channel, ranking_type)
+        
         if week == 0:
-            url = f"{self.RANKING_BASE_URL}?page={page}"
+            url = f"{base_url}?page={page}"
         else:
-            url = f"{self.RANKING_BASE_URL}week{week}/?page={page}"
+            url = f"{base_url}week{week}/?page={page}"
+        
+        logger.info(f"ランキングページ取得: {url}")
         
         # 対象ページを取得
         html = self.get_page(url)
@@ -329,9 +351,10 @@ class CosmeNetScraper:
             
             # ジャンルに一致するか確認
             if self.is_product_in_genre(product, genre):
-                # チャンネル情報追加
+                # チャンネル情報とランキングタイプを追加
                 product["channel"] = channel
                 product["genre"] = genre
+                product["ranking_type"] = ranking_type
                 
                 # 製品詳細ページから追加情報を取得
                 product_detail = self.get_product_detail(product_id)
@@ -418,7 +441,8 @@ class CosmeNetScraper:
     def get_products_by_criteria(
         self, 
         channel: str,
-        genre: str, 
+        genre: str,
+        ranking_type: str = "最新",
         min_count: int = 7,
         max_weeks_back: int = 3
     ) -> List[Dict[str, Any]]:
@@ -427,7 +451,8 @@ class CosmeNetScraper:
         
         Args:
             channel: チャンネル名
-            genre: ジャンル名 
+            genre: ジャンル名
+            ranking_type: ランキングの種類
             min_count: 必要な最小製品数
             max_weeks_back: 最大遡る週数
         
@@ -438,14 +463,20 @@ class CosmeNetScraper:
         existing_ids = set()
         
         # デバッグ: 開始情報
-        logger.debug(f"製品収集開始: チャンネル={channel}, ジャンル={genre}, 最小数={min_count}")
+        logger.debug(f"製品収集開始: チャンネル={channel}, ジャンル={genre}, ランキング={ranking_type}, 最小数={min_count}")
         
         # まず現在の週の複数ページをチェック
         for page in range(1, 6):  # page=1からpage=5まで
             if len(collected_products) >= min_count:
                 break
                 
-            products = self.get_ranking_products(channel, genre, week=0, page=page)
+            products = self.get_ranking_products(
+                channel=channel,
+                genre=genre,
+                ranking_type=ranking_type,
+                week=0,
+                page=page
+            )
             
             # 重複を避けるためにフィルタリング
             new_products = [p for p in products if p["product_id"] not in existing_ids]
@@ -472,7 +503,13 @@ class CosmeNetScraper:
                 break
                 
             for page in range(1, 3):  # 各週は最初の2ページだけチェック
-                products = self.get_ranking_products(channel, genre, week=week, page=page)
+                products = self.get_ranking_products(
+                    channel=channel,
+                    genre=genre,
+                    ranking_type=ranking_type,
+                    week=week,
+                    page=page
+                )
                 
                 # 重複を避けるためにフィルタリング
                 new_products = [p for p in products if p["product_id"] not in existing_ids]

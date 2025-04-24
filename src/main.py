@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 @file: main.py
-@desc: ショート動画を自動生成するメインスクリプト
+@desc: ショート動画を自動生成するメインスクリプト（ランキングタイプ対応版）
 """
 
 import os
@@ -55,12 +55,18 @@ def parse_args():
     parser = argparse.ArgumentParser(description='アットコスメランキングからショート動画を自動生成')
     
     parser.add_argument('--channel', type=str, default='スーパー',
-                        choices=['スーパー'],
+                        choices=['デパート', 'スーパー', 'バラエティショップ', 
+                                '化粧品専門店', 'コンビニエンスストア', '通販化粧品・コスメ',
+                                '訪問販売', '独立店舗・サロン'],
                         help='購入場所チャンネル')
     
     parser.add_argument('--genre', type=str, default='美容液',
-                        choices=['化粧水', '乳液', '美容液'],
+                        choices=['化粧水', '乳液', '美容液', 'フェイスクリーム', 'クレンジング', 'パック'],
                         help='対象ジャンル')
+    
+    parser.add_argument('--ranking-type', type=str, default='最新',
+                        choices=['最新', 'お好み', '急上昇', '年代', '肌質'],
+                        help='ランキングの種類')
     
     parser.add_argument('--min-products', type=int, default=7,
                         help='最小必要製品数')
