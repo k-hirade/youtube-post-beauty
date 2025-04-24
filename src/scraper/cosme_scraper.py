@@ -14,6 +14,8 @@ import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 
+from scraper.config_categories import CATEGORY_MAP, CHANNEL_MAP
+
 # ロガー設定
 logger = logging.getLogger(__name__)
 
@@ -22,17 +24,6 @@ class CosmeNetScraper:
     
     BASE_URL = "https://www.cosme.net"
     RANKING_BASE_URL = "https://www.cosme.net/categories/pchannel/2/ranking/"
-    
-    # カテゴリーID対応表（例示、必要に応じて拡充）
-    CATEGORY_MAP = {
-        "化粧水": ["1003", "1071", "1072"],  # 化粧水、薬用化粧水、ミスト状化粧水
-        "乳液": ["1004", "1005", "1006", "1067", "1073"],  # 乳液、美容液、クリーム等
-        "パック": ["1007"]  # シートマスク・パック
-    }
-    
-    CHANNEL_MAP = {
-        "スーパー": "2",
-    }
     
     def __init__(self, rate_limit: float = 1.0):
         """
@@ -47,6 +38,10 @@ class CosmeNetScraper:
             "User-Agent": "Auto-Cosme-Shorts/0.1 (https://example.com/bot; bot@example.com)"
         })
         self.last_request_time = 0
+        
+        # 設定ファイルからカテゴリーマッピングをロード
+        self.CATEGORY_MAP = CATEGORY_MAP
+        self.CHANNEL_MAP = CHANNEL_MAP
     
     def _respect_rate_limit(self):
         """レート制限を遵守するために必要に応じて待機"""
@@ -194,34 +189,17 @@ class CosmeNetScraper:
                 brand = brand_a.text.strip() if brand_a else "不明"
                 brand_url = urljoin(self.BASE_URL, brand_a.get('href', '')) if brand_a else None
                 
-                # カテゴリ情報取得
+                # カテゴリ情報取得 (テキストベースに変更)
                 category_links = item.select("span.category a")
                 categories = []
-                category_ids = []
                 
                 # デバッグ: カテゴリ要素の確認
                 logger.debug(f"製品 ID={product_id} '{product_name}' のカテゴリ要素数: {len(category_links)}")
                 
-                # カテゴリHTML全体のデバッグ出力
-                category_span = item.select_one("span.category")
-                if category_span:
-                    logger.debug(f"カテゴリHTML: {category_span}")
-                
                 for a in category_links:
                     cat_text = a.text.strip()
                     categories.append(cat_text)
-                    
-                    # カテゴリIDを抽出 (URL: https://www.cosme.net/categories/item/1004/ から1004を取得)
-                    cat_href = a.get('href', '')
-                    logger.debug(f"製品 ID={product_id} のカテゴリリンク: {cat_href}")
-                    
-                    cat_id_match = re.search(r'/categories/item/(\d+)/', cat_href)
-                    if cat_id_match:
-                        cat_id = cat_id_match.group(1)
-                        category_ids.append(cat_id)
-                        logger.debug(f"製品 ID={product_id} のカテゴリID抽出: {cat_text} -> {cat_id}")
-                    else:
-                        logger.warning(f"製品 ID={product_id} のカテゴリIDが抽出できませんでした: {cat_href}")
+                    logger.debug(f"製品 ID={product_id} のカテゴリ: {cat_text}")
                 
                 # 画像情報取得 (ランキングページの画像は小さいので、詳細ページを取得する)
                 img_elem = item.select_one("dd.pic img")
@@ -251,7 +229,6 @@ class CosmeNetScraper:
                     "brand_url": brand_url,
                     "product_url": product_url,
                     "categories": categories,
-                    "category_ids": category_ids,
                     "image_url": image_url,
                     "price": price_text,
                     "release_date": release_text,
@@ -267,6 +244,49 @@ class CosmeNetScraper:
                 continue
         
         return products
+    
+    def is_product_in_genre(self, product: Dict[str, Any], genre: str) -> bool:
+        """
+        製品が指定されたジャンルに属するかを判定（テキストベース）
+        
+        Args:
+            product: 製品情報の辞書
+            genre: 対象ジャンル名
+            
+        Returns:
+            True: 製品がジャンルに属する
+            False: 製品がジャンルに属さない
+        """
+        # ジャンルが複数指定されている場合は分割
+        genre_list = [g.strip() for g in genre.split(',')]
+        
+        # 製品カテゴリ
+        product_categories = product.get("categories", [])
+        
+        logger.debug(f"製品: {product.get('name')} のカテゴリ: {product_categories}")
+        logger.debug(f"対象ジャンル: {genre_list}")
+        
+        # 各ジャンルについて検証
+        for g in genre_list:
+            # CATEGORY_MAPから対象カテゴリのキーワードリストを取得
+            target_categories = self.CATEGORY_MAP.get(g, [])
+            logger.debug(f"対象カテゴリー キーワード: {target_categories}")
+            
+            # 製品カテゴリとターゲットカテゴリを比較
+            for prod_cat in product_categories:
+                for target_cat in target_categories:
+                    if target_cat in prod_cat or prod_cat in target_cat:
+                        logger.debug(f"カテゴリーマッチ: '{prod_cat}' と '{target_cat}'")
+                        return True
+                        
+            # 直接ジャンル名とカテゴリ名のマッチング（バックアップ）
+            for prod_cat in product_categories:
+                if g in prod_cat or prod_cat in g:
+                    logger.debug(f"直接マッチ: '{prod_cat}' と '{g}'")
+                    return True
+        
+        logger.debug(f"製品: {product.get('name')} はジャンル {genre} に一致しませんでした")
+        return False
     
     def get_ranking_products(
         self, 
@@ -303,55 +323,12 @@ class CosmeNetScraper:
         # 指定ジャンルの製品をフィルタリング
         filtered_products = []
         
-        # カテゴリIDの取得(指定されたジャンルに対応するCATEGORY_MAPのID)
-        genre_list = [g.strip() for g in genre.split(',')]
-        target_category_ids = []
-        
-        for g in genre_list:
-            if g in self.CATEGORY_MAP:
-                target_category_ids.extend(self.CATEGORY_MAP[g])
-        
-        # デバッグ: ターゲットカテゴリID
-        logger.debug(f"ターゲットジャンル: {genre_list}")
-        logger.debug(f"ターゲットカテゴリID: {target_category_ids}")
-        
-        # フィルタリング実行
         for product in products:
-            match = False
             product_id = product.get("product_id", "不明")
             product_name = product.get("name", "不明")
             
-            # デバッグ: フィルタリング前の製品情報
-            logger.debug(f"フィルタリング対象: ID={product_id}, {product_name}")
-            logger.debug(f"  カテゴリ: {product.get('categories', [])}")
-            logger.debug(f"  カテゴリID: {product.get('category_ids', [])}")
-            
-            # 1. カテゴリIDによるマッチング (優先)
-            if "category_ids" in product and product["category_ids"]:
-                for cat_id in product["category_ids"]:
-                    logger.debug(f"  カテゴリID比較: {cat_id} in {target_category_ids}?")
-                    if cat_id in target_category_ids:
-                        match = True
-                        logger.debug(f"  カテゴリIDマッチ: ID={product_id}, {cat_id} in {target_category_ids}")
-                        break
-                    else:
-                        logger.debug(f"  カテゴリIDミスマッチ: ID={product_id}, {cat_id} not in {target_category_ids}")
-            else:
-                logger.debug(f"  カテゴリIDなし: ID={product_id}")
-            
-            # 2. テキストマッチングによるバックアップ
-            if not match and product["categories"]:
-                # カテゴリ名マッチング
-                for cat in product["categories"]:
-                    for g in genre_list:
-                        if g in cat:
-                            match = True
-                            logger.debug(f"  カテゴリ名マッチ: ID={product_id}, '{g}' in '{cat}'")
-                            break
-                    if match:
-                        break
-            
-            if match:
+            # ジャンルに一致するか確認
+            if self.is_product_in_genre(product, genre):
                 # チャンネル情報追加
                 product["channel"] = channel
                 product["genre"] = genre
@@ -371,7 +348,7 @@ class CosmeNetScraper:
                 filtered_products.append(product)
                 logger.info(f"該当製品: ID={product_id}, {product_name} ({product['brand']}), カテゴリ: {product['categories']}")
             else:
-                logger.debug(f"  ジャンル不一致のため除外: ID={product_id}, {product_name}")
+                logger.debug(f"ジャンル不一致のため除外: ID={product_id}, {product_name}")
         
         return filtered_products
     
@@ -477,7 +454,6 @@ class CosmeNetScraper:
             for p in new_products:
                 logger.debug(f"新規追加製品: ID={p['product_id']}, {p['brand']} {p['name']}")
                 logger.debug(f"  カテゴリ: {p.get('categories', [])}")
-                logger.debug(f"  カテゴリID: {p.get('category_ids', [])}")
             
             # 既存IDセットを更新
             new_ids = [p["product_id"] for p in new_products]
@@ -505,7 +481,6 @@ class CosmeNetScraper:
                 for p in new_products:
                     logger.debug(f"過去週{week}から追加製品: ID={p['product_id']}, {p['brand']} {p['name']}")
                     logger.debug(f"  カテゴリ: {p.get('categories', [])}")
-                    logger.debug(f"  カテゴリID: {p.get('category_ids', [])}")
                 
                 # 既存IDセットを更新
                 new_ids = [p["product_id"] for p in new_products]
@@ -532,7 +507,6 @@ class CosmeNetScraper:
                 for i, p in enumerate(collected_products, 1):
                     logger.debug(f"{i}. ID={p['product_id']}, {p['brand']} {p['name']}")
                     logger.debug(f"  カテゴリ: {p.get('categories', [])}")
-                    logger.debug(f"  カテゴリID: {p.get('category_ids', [])}")
                     logger.debug(f"  画像URL: {p.get('image_url', 'なし')}")
                     logger.debug(f"  製品URL: {p.get('product_url', 'なし')}")
                     logger.debug(f"  ブランドURL: {p.get('brand_url', 'なし')}")

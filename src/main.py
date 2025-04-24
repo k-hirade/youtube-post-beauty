@@ -58,8 +58,8 @@ def parse_args():
                         choices=['スーパー'],
                         help='購入場所チャンネル')
     
-    parser.add_argument('--genre', type=str, default='乳液',
-                        choices=['化粧水', '乳液', 'パック'],
+    parser.add_argument('--genre', type=str, default='美容液',
+                        choices=['化粧水', '乳液', '美容液'],
                         help='対象ジャンル')
     
     parser.add_argument('--min-products', type=int, default=7,
