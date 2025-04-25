@@ -30,6 +30,8 @@ load_dotenv()
 # ロガー設定
 logger = logging.getLogger(__name__)
 
+skip_gcp = os.environ.get("skip_gcp")
+
 def setup_logging(log_file: Optional[str] = None, log_level: int = logging.INFO):
     """ロギングの設定"""
     log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -202,17 +204,20 @@ def run_pipeline(args):
         )
 
         # 10. GCS へアップロード
-        uploader = GCSUploader(
-            bucket_name=os.environ["GCS_BUCKET"],
-            credentials_path=os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"),
-            project_id=os.environ.get("GCP_PROJECT_ID")
-        )
-        gcs_uri = uploader.upload_video(
-            video_path=output_video,
-            title=os.path.basename(output_video),
-            genre=args.genre,
-            channel=args.channel
-        )
+        if skip_gcp:
+            uploader = GCSUploader(
+                bucket_name=os.environ["GCS_BUCKET"],
+                credentials_path=os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"),
+                project_id=os.environ.get("GCP_PROJECT_ID")
+            )
+            gcs_uri = uploader.upload_video(
+                video_path=output_video,
+                title=os.path.basename(output_video),
+                genre=args.genre,
+                channel=args.channel
+            )
+        else:
+            logging.info("GCP skip")
 
         # 11. QA ＋ スプレッドシート登録
         qa = VideoQA()
