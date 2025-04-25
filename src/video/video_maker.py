@@ -642,13 +642,16 @@ class VideoMaker:
         
         return img.convert("RGB")
     
-    def _create_improved_intro_slide(self, title: str) -> Image.Image:
+    def _create_improved_intro_slide(self, channel: str) -> Image.Image:
         bg = self._get_common_background()
         # 背景のぼかし入り写真があるならここで合成しても OK
         y = int(self.VIDEO_HEIGHT * 0.06)
 
+        channel_name = f"{channel}で" if channel else "お店で"
+
         # 共通フォント
         heavy130  = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY, 130)
+        heavy100  = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY, 100)
         heavy220  = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY, 220)
         heavy150  = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY, 150)
         heavy180  = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY, 180)
@@ -692,12 +695,20 @@ class VideoMaker:
 
         y += 50   # 行間を広めに
 
-        # ③ 薬局で買える
-        text = "薬局で買える"
+        # ③ {購入場所}で買える
+        text = f"{channel_name}買える"
+        text_len = len(text)
+        # フォントを長さで切り替え
+        if text_len >= 10:
+            heavy_font = heavy100
+        elif text_len >= 8:
+            heavy_font = heavy130
+        else: 
+            heavy_font = heavy150
         w = self.calculate_text_width(text, heavy150, ImageDraw.Draw(bg))
         self._draw_text_italic(
             bg, text, y,
-            heavy150,
+            heavy_font,
             gradient=[(255, 246, 194), (255, 216, 74), (199, 154, 5)],
             stroke_width=8, stroke_fill=(0, 0, 0),
             bevel=True,
@@ -781,6 +792,7 @@ class VideoMaker:
             self,
             products: List[Dict[str, Any]],
             title: str,
+            channel: str,
             output_filename: Optional[str] = None
         ) -> str:
             """
@@ -825,11 +837,12 @@ class VideoMaker:
                     
                     if not intro_title:
                         # main.pyからタイトルを構築
-                        channel = title.split('で買える')[0] if 'で買える' in title else ""
+                        channel_intro = title.split('で買える')[0] if 'で買える' in title else ""
                         genre = title.split('で買える')[-1].replace('ランキング', '').strip() if 'で買える' in title else ""
-                        intro_title = f"{channel}で買える{genre}7選！"
+                        intro_title = f"{channel_intro}で買える{genre}7選！"
 
-                    intro_img = self._create_improved_intro_slide(intro_title)
+
+                    intro_img = self._create_improved_intro_slide(channel)
                     intro_slide_path = os.path.join(temp_dir, "intro_slide.png")
                     intro_img.save(intro_slide_path)
                     

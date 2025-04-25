@@ -50,38 +50,57 @@ class CosmeDatabase:
                 # なければハードコードされたスキーマを使用
                 schema_sql = """
                 CREATE TABLE IF NOT EXISTS products (
-                  product_id   TEXT PRIMARY KEY,
-                  genre        TEXT,
-                  channel      TEXT,
-                  name         TEXT,
-                  brand        TEXT,
-                  image_url    TEXT,
-                  product_url  TEXT,
-                  brand_url    TEXT,
-                  scraped_rank INTEGER,
-                  first_seen   DATETIME,
-                  last_used    DATETIME
+                product_id   TEXT PRIMARY KEY,
+                genre        TEXT,
+                channel      TEXT,
+                name         TEXT,
+                brand        TEXT,
+                image_url    TEXT,
+                product_url  TEXT,
+                brand_url    TEXT,
+                scraped_rank INTEGER,
+                first_seen   DATETIME,
+                last_used    DATETIME
                 );
                 CREATE TABLE IF NOT EXISTS runs (
-                  run_id       INTEGER PRIMARY KEY AUTOINCREMENT,
-                  genre        TEXT,
-                  channel      TEXT,
-                  created_at   DATETIME,
-                  status       TEXT,
-                  video_gs_uri TEXT,
-                  error_details TEXT
+                run_id       INTEGER PRIMARY KEY AUTOINCREMENT,
+                genre        TEXT,
+                channel      TEXT,
+                ranking_type TEXT DEFAULT '最新',
+                created_at   DATETIME,
+                status       TEXT,
+                video_gs_uri TEXT,
+                error_details TEXT
                 );
                 CREATE TABLE IF NOT EXISTS review_cache (
-                  product_id   TEXT PRIMARY KEY,
-                  summary1     TEXT,
-                  summary2     TEXT,
-                  summary3     TEXT,
-                  updated_at   DATETIME
+                product_id   TEXT PRIMARY KEY,
+                summary1     TEXT,
+                summary2     TEXT,
+                summary3     TEXT,
+                updated_at   DATETIME
                 );
                 """
-            
+                
             conn = self._get_connection()
+            
+            # ランキングタイプカラムが存在するか確認
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA table_info(runs)")
+            columns = cursor.fetchall()
+            column_names = [column['name'] for column in columns]
+            
+            # テーブル作成
             conn.executescript(schema_sql)
+            
+            # ランキングタイプカラムが存在しない場合は追加
+            if 'ranking_type' not in column_names:
+                try:
+                    conn.execute("ALTER TABLE runs ADD COLUMN ranking_type TEXT DEFAULT '最新'")
+                    logger.info("runs テーブルに ranking_type カラムを追加しました")
+                except sqlite3.OperationalError:
+                    # カラムが既に存在する場合は無視
+                    pass
+            
             conn.commit()
             conn.close()
             logger.info("データベース初期化完了")
@@ -263,13 +282,14 @@ class CosmeDatabase:
             logger.error(f"製品使用マークエラー: {str(e)}")
             return False
     
-    def create_run(self, genre: str, channel: str) -> Optional[int]:
+    def create_run(self, genre: str, channel: str, ranking_type: str = "最新") -> Optional[int]:
         """
         新しい実行記録を作成
         
         Args:
             genre: ジャンル
             channel: チャンネル
+            ranking_type: ランキングタイプ（最新、お好みなど）
             
         Returns:
             作成されたrun_id、失敗時はNone
@@ -281,10 +301,10 @@ class CosmeDatabase:
             
             cursor.execute(
                 """
-                INSERT INTO runs (genre, channel, created_at, status)
-                VALUES (?, ?, ?, 'started')
+                INSERT INTO runs (genre, channel, created_at, status, ranking_type)
+                VALUES (?, ?, ?, 'started', ?)
                 """,
-                (genre, channel, now)
+                (genre, channel, now, ranking_type)
             )
             
             run_id = cursor.lastrowid
@@ -300,7 +320,9 @@ class CosmeDatabase:
         self,
         run_id: int,
         status: str,
-        video_gs_uri: Optional[str] = None
+        video_gs_uri: Optional[str] = None,
+        ranking_type: Optional[str] = None,
+        notes: Optional[str] = None
     ) -> bool:
         """
         実行記録のステータスを更新
@@ -309,6 +331,8 @@ class CosmeDatabase:
             run_id: 実行ID
             status: 新しいステータス
             video_gs_uri: 動画のCloud StorageのURI（成功時）
+            ranking_type: ランキングタイプ
+            notes: 追加の備考
             
         Returns:
             成功したかどうか
@@ -317,20 +341,25 @@ class CosmeDatabase:
             conn = self._get_connection()
             cursor = conn.cursor()
             
+            query = "UPDATE runs SET status = ?"
+            params = [status]
+            
             if video_gs_uri:
-                cursor.execute(
-                    """
-                    UPDATE runs 
-                    SET status = ?, video_gs_uri = ?
-                    WHERE run_id = ?
-                    """,
-                    (status, video_gs_uri, run_id)
-                )
-            else:
-                cursor.execute(
-                    "UPDATE runs SET status = ? WHERE run_id = ?",
-                    (status, run_id)
-                )
+                query += ", video_gs_uri = ?"
+                params.append(video_gs_uri)
+            
+            if ranking_type:
+                query += ", ranking_type = ?"
+                params.append(ranking_type)
+                
+            if notes:
+                query += ", error_details = ?"
+                params.append(notes)
+                
+            query += " WHERE run_id = ?"
+            params.append(run_id)
+            
+            cursor.execute(query, params)
             
             conn.commit()
             conn.close()
@@ -338,7 +367,7 @@ class CosmeDatabase:
         except Exception as e:
             logger.error(f"実行記録更新エラー: {str(e)}")
             return False
-    
+
     def save_reviews(
         self,
         product_id: str,

@@ -56,7 +56,7 @@ def parse_args():
     
     parser.add_argument('--channel', type=str, default='スーパー',
                         choices=['デパート', 'スーパー', 'バラエティショップ', 
-                                '化粧品専門店', 'コンビニエンスストア', '通販化粧品・コスメ',
+                                '化粧品専門店', 'コンビニ', '通販化粧品・コスメ',
                                 '訪問販売', '独立店舗・サロン'],
                         help='購入場所チャンネル')
     
@@ -198,6 +198,7 @@ def run_pipeline(args):
         output_video = video_maker.create_video(
             products=selected_with_reviews,
             title=f"{args.channel}で買える{args.genre}ランキング",
+            channel=args.channel,
         )
 
         # 10. GCS へアップロード
