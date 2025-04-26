@@ -57,9 +57,6 @@ class SocialMediaPoster:
         self.youtube_client_secrets.parent.mkdir(parents=True, exist_ok=True)
         self.youtube_token_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # ------------------------------------------------------------------
-    # public API
-    # ------------------------------------------------------------------
     def post_video(
         self,
         *,
@@ -106,9 +103,6 @@ class SocialMediaPoster:
 
         return results
 
-    # ------------------------------------------------------------------
-    # YouTube implementation
-    # ------------------------------------------------------------------
     def _post_to_youtube(
         self,
         video_path: str,
