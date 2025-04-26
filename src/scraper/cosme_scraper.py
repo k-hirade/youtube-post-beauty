@@ -29,7 +29,7 @@ class CosmeNetScraper:
            "AppleWebKit/537.36 (KHTML, like Gecko) "
            "Chrome/123.0 Safari/537.36")
     
-    def __init__(self, rate_limit: float = 1.0):
+    def __init__(self, rate_limit: float = 1.0, http_timeout: float = 30.0):       
         """
         初期化
         
@@ -37,6 +37,7 @@ class CosmeNetScraper:
             rate_limit: リクエスト間隔（秒）
         """
         self.rate_limit = rate_limit
+        self.http_timeout = http_timeout
         self.session = requests.Session()
         self.session.headers.update({
             "User-Agent": "Auto-Cosme-Shorts/0.1 (https://example.com/bot; bot@example.com)"
@@ -57,14 +58,14 @@ class CosmeNetScraper:
         url += f"?page={page}"
 
         if page == 1:
-            r = self.session.get(url, timeout=10)
+            r = self.session.get(url, timeout=self.http_timeout)
         else:
             ajax_headers = {
                 "X-Requested-With": "XMLHttpRequest",
                 "X-PJAX": "true",
                 "Referer": url.replace(f"?page={page}", "")  # 見栄え用
             }
-            r = self.session.get(url, headers=ajax_headers, timeout=10)
+            r = self.session.get(url, headers=ajax_headers, timeout=self.http_timeout)
 
         r.raise_for_status()
         return r.text

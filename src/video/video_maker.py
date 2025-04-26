@@ -654,7 +654,7 @@ class VideoMaker:
         heavy180  = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY, 180)
         heavy150  = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY, 150)
         heavy130  = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY, 130)
-        heavy120  = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY, 120)
+        heavy110  = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY, 110)
         heavy90  = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY, 90)
         heavy80   = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY, 80)
         heavy60   = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY, 60)
@@ -703,9 +703,9 @@ class VideoMaker:
         if text_len >= 10:
             heavy_font = heavy90
         elif text_len >= 8:
-            heavy_font = heavy120
+            heavy_font = heavy110
         else: 
-            heavy_font = heavy150
+            heavy_font = heavy130
         w = self.calculate_text_width(text, heavy150, ImageDraw.Draw(bg))
         self._draw_text_italic(
             bg, text, y,
