@@ -19,7 +19,6 @@ import sys
 import unicodedata
 
 # 音声関連のユーティリティをインポート
-# sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 from video.voice_utils import generate_narration, get_audio_duration, create_silent_audio, merge_audio_files
 
 # ロガー設定
@@ -59,7 +58,7 @@ class VideoMaker:
         (0x48, 0x45, 0xFF),   # 青  (#4845ff)
     ]
     COMMENT_BORDER_PX   = 6     # 枠線の太さ
-    COMMENT_CORNER_RADIUS = 35  # 角丸半径
+    COMMENT_CORNER_RADIUS = 0
 
     SOURCE_HAN_SERIF_HEAVY = "/Library/Fonts/SourceHanSerif-Heavy.otf"
     
@@ -995,11 +994,11 @@ class VideoMaker:
                                 # 位置決定
                                 center_x = self.VIDEO_WIDTH // 2
                                 if comment_position == "top":
-                                    box_y = int(self.VIDEO_HEIGHT * 0.18)
+                                    box_y = int(self.VIDEO_HEIGHT * 0.25)
                                 elif comment_position == "middle":
-                                    box_y = int(self.VIDEO_HEIGHT * 0.48) - box_h // 2
+                                    box_y = int(self.VIDEO_HEIGHT * 0.5) - box_h // 2
                                 else:  # bottom
-                                    box_y = int(self.VIDEO_HEIGHT * 0.78) - box_h
+                                    box_y = int(self.VIDEO_HEIGHT * 0.75) - box_h
 
                                 box_x = center_x - box_w // 2
 

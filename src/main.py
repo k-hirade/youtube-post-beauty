@@ -32,8 +32,6 @@ load_dotenv()
 # ロガー設定
 logger = logging.getLogger(__name__)
 
-skip_gcp = os.environ.get("skip_gcp")
-
 def setup_logging(log_file: Optional[str] = None, log_level: int = logging.INFO):
     """ロギングの設定"""
     log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -205,8 +203,10 @@ def run_pipeline(args):
             channel=args.channel,
         )
 
+        skip_gcs_upload = os.environ.get("SKIP_GCS_UPLOAD")
+
         # 10. GCS へアップロード
-        if not skip_gcp:
+        if not skip_gcs_upload:
             uploader = GCSUploader(
                 bucket_name=os.environ["GCS_BUCKET"],
                 credentials_path=os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"),
@@ -238,7 +238,7 @@ def run_pipeline(args):
         qa = VideoQA()
         is_ok, meta, err = qa.validate_video(output_video)
 
-        if not skip_gcp:  # スキップしない場合にアップロード処理を実行
+        if not skip_gcs_upload:  # スキップしない場合にアップロード処理を実行
             qa.add_to_spreadsheet(
                 metadata=meta,
                 genre=args.genre,
