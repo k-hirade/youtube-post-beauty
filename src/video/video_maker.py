@@ -650,11 +650,12 @@ class VideoMaker:
         channel_name = f"{channel}で" if channel else "お店で"
 
         # 共通フォント
-        heavy130  = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY, 130)
-        heavy100  = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY, 100)
         heavy220  = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY, 220)
-        heavy150  = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY, 150)
         heavy180  = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY, 180)
+        heavy150  = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY, 150)
+        heavy130  = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY, 130)
+        heavy120  = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY, 120)
+        heavy90  = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY, 90)
         heavy80   = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY, 80)
         heavy60   = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY, 60)
 
@@ -700,9 +701,9 @@ class VideoMaker:
         text_len = len(text)
         # フォントを長さで切り替え
         if text_len >= 10:
-            heavy_font = heavy100
+            heavy_font = heavy90
         elif text_len >= 8:
-            heavy_font = heavy130
+            heavy_font = heavy120
         else: 
             heavy_font = heavy150
         w = self.calculate_text_width(text, heavy150, ImageDraw.Draw(bg))

@@ -23,6 +23,11 @@ class CosmeNetScraper:
     """アットコスメのランキングページをスクレイピングするクラス"""
     
     BASE_URL = "https://www.cosme.net"
+    BASE = "https://www.cosme.net/categories/pchannel/{channel}/{path}/"
+
+    _ua = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+           "AppleWebKit/537.36 (KHTML, like Gecko) "
+           "Chrome/123.0 Safari/537.36")
     
     def __init__(self, rate_limit: float = 1.0):
         """
@@ -42,6 +47,27 @@ class CosmeNetScraper:
         self.CATEGORY_MAP = CATEGORY_MAP
         self.CHANNEL_MAP = CHANNEL_MAP
         self.RANKING_TYPE_MAP = RANKING_TYPE_MAP
+
+    def _fetch_okonomi(self, channel: str, page: int) -> str:
+        """
+        「お好み」ランキング 1 ページ目は通常 GET、
+        2 ページ目以降は PJAX/AJAX 用ヘッダを付けて取得
+        """
+        url = self.BASE.format(channel=channel, path="ranking-search")
+        url += f"?page={page}"
+
+        if page == 1:
+            r = self.session.get(url, timeout=10)
+        else:
+            ajax_headers = {
+                "X-Requested-With": "XMLHttpRequest",
+                "X-PJAX": "true",
+                "Referer": url.replace(f"?page={page}", "")  # 見栄え用
+            }
+            r = self.session.get(url, headers=ajax_headers, timeout=10)
+
+        r.raise_for_status()
+        return r.text
     
     def _get_ranking_base_url(self, channel: str, ranking_type: str = "最新") -> str:
         """
@@ -326,17 +352,20 @@ class CosmeNetScraper:
             製品情報の辞書リスト
         """
         # ランキングURL構築
-        base_url = self._get_ranking_base_url(channel, ranking_type)
-        
-        if week == 0:
-            url = f"{base_url}?page={page}"
+        channel_id = self.CHANNEL_MAP.get(channel)
+        if ranking_type == "お好み" and week == 0:
+            self._respect_rate_limit()
+            html = self._fetch_okonomi(channel_id, page)
+            logger.info(
+                f"ランキングページ取得（お好み・PJAX）: "
+                f"/categories/pchannel/{channel_id}/ranking-search/?page={page}"
+            )
         else:
-            url = f"{base_url}week{week}/?page={page}"
-        
-        logger.info(f"ランキングページ取得: {url}")
-        
-        # 対象ページを取得
-        html = self.get_page(url)
+            base_url = self._get_ranking_base_url(channel, ranking_type)
+            url = f"{base_url}?page={page}" if week == 0 else f"{base_url}week{week}/?page={page}"
+            logger.info(f"ランキングページ取得: {url}")
+            html = self.get_page(url)
+
         soup = BeautifulSoup(html, 'html.parser')
         
         # 製品リストを取得
@@ -464,6 +493,8 @@ class CosmeNetScraper:
             収集された製品リスト
         """
         collected_products = []
+        if ranking_type == "お好み":
+            max_pages = 500
         
         # まず現在の週の複数ページをチェック
         for page in range(1, max_pages + 1):
@@ -496,7 +527,7 @@ class CosmeNetScraper:
             if len(collected_products) >= min_count:
                 break
                 
-            for page in range(1, 3):  # 各週は最初の2ページだけチェック
+            for page in range(1, 6):  # 各週は最初の2ページだけチェック
                 products = self.get_ranking_products(
                     channel=channel,
                     genre=genre,
