@@ -26,6 +26,8 @@ VOICEVOX_CHARS = [
     {"id": 11,"name": "玄野武宏"}    # 玄野武宏のID
 ]
 
+SPEECH_SPEED = float(os.getenv("SPEECH_SPEED", "1.4"))
+
 # 音声合成エンジンの動作チェック
 def check_voicevox_available():
     """VOICEVOXエンジンが利用可能かチェック"""
@@ -276,6 +278,7 @@ def generate_with_voicevox(text: str, output_path: str, voice_type: str) -> bool
             
             query_json = response.json()
             query_json["volumeScale"] = 2.8  # 音量調整
+            query_json["speedScale"]  = SPEECH_SPEED
             
             # 音声合成リクエスト
             response = requests.post(
