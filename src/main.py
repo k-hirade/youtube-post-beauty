@@ -230,7 +230,7 @@ def run_pipeline(args):
         post_res = poster.post_video(
             video_path=output_video,
             title=f"{args.channel}で買える{args.genre}ランキング",
-            description="自動生成ショート動画 #Shorts"
+            description="#Shorts"
         )
         logger.info(f"Social upload result: {post_res}")
 
