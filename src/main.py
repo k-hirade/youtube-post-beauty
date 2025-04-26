@@ -21,7 +21,9 @@ from src.review.review_generator import ReviewGenerator
 from src.video.video_maker import VideoMaker
 from src.uploader.gcs_uploader import GCSUploader
 from src.qa.video_qa import VideoQA
-from src.notifier.notifier import Notifier
+from src.notifier.notifier import Notifier 
+from src.uploader.social_media_poster import SocialMediaPoster
+
 
 # 環境変数読み込み
 from dotenv import load_dotenv
@@ -204,7 +206,7 @@ def run_pipeline(args):
         )
 
         # 10. GCS へアップロード
-        if skip_gcp:
+        if not skip_gcp:
             uploader = GCSUploader(
                 bucket_name=os.environ["GCS_BUCKET"],
                 credentials_path=os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"),
@@ -217,20 +219,46 @@ def run_pipeline(args):
                 channel=args.channel
             )
         else:
-            logging.info("GCP skip")
+            logging.info("GCP upload skipped")
+
+        poster = SocialMediaPoster(
+            enable_youtube=os.environ.get("ENABLE_YOUTUBE_SHORTS", "true").lower() == "true",
+            enable_tiktok=os.environ.get("ENABLE_TIKTOK_SHORTS", "false").lower() == "true",
+            enable_instagram=os.environ.get("ENABLE_INSTAGRAM_SHORTS", "false").lower() == "true",
+        )
+
+        post_res = poster.post_video(
+            video_path=output_video,
+            title=f"{args.channel}で買える{args.genre}ランキング",
+            description="自動生成ショート動画 #Shorts"
+        )
+        logger.info(f"Social upload result: {post_res}")
 
         # 11. QA ＋ スプレッドシート登録
         qa = VideoQA()
         is_ok, meta, err = qa.validate_video(output_video)
-        qa.add_to_spreadsheet(
-            metadata=meta,
-            genre=args.genre,
-            channel=args.channel,
-            title=os.path.basename(output_video),
-            gcs_uri=gcs_uri,
-            qa_status="OK" if is_ok else "NG",
-            notes=err
-        )
+
+        if not skip_gcp:  # スキップしない場合にアップロード処理を実行
+            qa.add_to_spreadsheet(
+                metadata=meta,
+                genre=args.genre,
+                channel=args.channel,
+                title=os.path.basename(output_video),
+                gcs_uri=gcs_uri,
+                qa_status="OK" if is_ok else "NG",
+                notes=err
+            )
+        else:
+            gcs_uri = ""
+            qa.add_to_spreadsheet(
+                metadata=meta,
+                genre=args.genre,
+                channel=args.channel,
+                title=os.path.basename(output_video),
+                gcs_uri=gcs_uri,
+                qa_status="OK" if is_ok else "NG",
+                notes=err
+            )
 
         # 12. 通知
         notifier = Notifier()
