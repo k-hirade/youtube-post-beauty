@@ -1170,7 +1170,7 @@ class VideoMaker:
                 intro_title = None
                 for product in shuffled_products:
                     if 'channel' in product and 'genre' in product:
-                        intro_title = f"{product['channel']}で買える{product['genre']}7選！"
+                        intro_title = f"一度はマジで使ってみてほしい{channel_intro}で買える神商品挙げてく。これはブックマーク必須やで"
                         break
                 
                 if not intro_title:

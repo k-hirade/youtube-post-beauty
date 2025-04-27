@@ -560,7 +560,7 @@ class CosmeNetScraper:
         channel: str,
         genre: str,
         ranking_type: str = "最新",
-        min_count: int = 7,
+        min_count: int = 10,
         max_weeks_back: int = 3
     ) -> List[Dict[str, Any]]:
         """
