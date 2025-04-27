@@ -467,7 +467,7 @@ class VideoMaker:
         # 小さい画像（180x180など）の場合は、そのまま使用して拡大する
         if img_width <= 400 and img_height <= 400:
             # 画面の80%の幅に拡大
-            target_width = int(self.VIDEO_WIDTH * 0.8)
+            target_width = int(self.VIDEO_WIDTH * 0.75)
             target_height = int(target_width * img_height / img_width)
             return img.resize((target_width, target_height), Image.LANCZOS)
         
@@ -1051,6 +1051,62 @@ class VideoMaker:
             logger.error(traceback.format_exc())
             return False
 
+    def wrap_text(self, text, font, draw, max_width):
+        """
+        テキストを適切な位置で折り返す（最大2行まで対応）
+        """
+        # 短いテキストはそのまま1行で返す
+        if len(text) <= 12:
+            return [text]
+        
+        # テキスト幅を計算
+        def calculate_text_width(text_to_measure):
+            try:
+                return self.calculate_text_width(text_to_measure, font, draw)
+            except AttributeError:
+                return draw.textsize(text_to_measure, font=font)[0]
+        
+        # テキスト幅が最大幅を超えない場合は1行で返す
+        if calculate_text_width(text) <= max_width:
+            return [text]
+        
+        # 折り返しの基準となる文字と助詞
+        break_chars = '、。，．,.!?！？ 　'
+        break_words = ['で', 'が', 'を', 'は', 'に', 'へ', 'と', 'や', 'の']
+        
+        # 文字列の半分あたりから適切な区切り位置を探す
+        middle_pos = len(text) // 2
+        search_range = 10  # 検索範囲
+        best_position = middle_pos  # デフォルト位置
+        
+        # 適切な区切り位置を前後に探索
+        for offset in range(search_range + 1):
+            # 前方向に探索
+            if middle_pos - offset >= 0:
+                check_pos = middle_pos - offset
+                if text[check_pos] in break_chars:
+                    best_position = check_pos + 1
+                    break
+                elif check_pos > 0 and text[check_pos-1] in break_words:
+                    best_position = check_pos
+                    break
+            
+            # 後方向に探索
+            if middle_pos + offset < len(text):
+                check_pos = middle_pos + offset
+                if text[check_pos] in break_chars:
+                    best_position = check_pos + 1
+                    break
+                elif check_pos > 0 and text[check_pos-1] in break_words:
+                    best_position = check_pos
+                    break
+        
+        # 行を分割
+        first_line = text[:best_position]
+        second_line = text[best_position:]
+        
+        return [first_line, second_line]
+
     def _get_video_duration(self, video_path):
         """動画ファイルの長さを取得する"""
         try:
@@ -1312,25 +1368,19 @@ class VideoMaker:
                             )
                             draw = ImageDraw.Draw(accumulated_slide)
 
-                            # テキスト幅を調整して折り返し
-                            max_text_width = int(self.VIDEO_WIDTH * 0.78)
-                            words = list(comment_text)
-                            lines, current = [], ""
-                            for ch in words:
-                                if self.calculate_text_width(current + ch, comment_font, draw) <= max_text_width:
-                                    current += ch
-                                else:
-                                    lines.append(current)
-                                    current = ch
-                            if current:
-                                lines.append(current)
+                            # テキスト幅を調整して折り返し (修正部分)
+                            max_text_width = int(self.VIDEO_WIDTH * 0.7)  # コメント内テキスト幅（ボックス幅の少し小さめ）
+                            # テキストを折り返す
+                            lines = self.wrap_text(comment_text, comment_font, draw, max_text_width)
 
-                            # バルーンサイズ計算
+                            # バルーンサイズ計算 (修正部分)
                             line_h = int((self.REVIEW_FONT_SIZE + 15) * 1.4)
                             text_h = line_h * len(lines)
                             text_w = max(self.calculate_text_width(l, comment_font, draw) for l in lines)
                             pad_x, pad_y = 40, 30
-                            box_w = text_w + pad_x * 2
+                            
+                            # ボックス幅を画面幅の80%に固定 (修正部分)
+                            box_w = int(self.VIDEO_WIDTH * 0.8)
                             box_h = text_h + pad_y * 2
 
                             # 位置決定
@@ -1359,7 +1409,7 @@ class VideoMaker:
                                 width=self.COMMENT_BORDER_PX
                             )
 
-                            # テキスト描画
+                            # テキスト描画 (修正部分)
                             for idx, line in enumerate(lines):
                                 tx = center_x - self.calculate_text_width(line, comment_font, draw) // 2
                                 ty = box_y + pad_y + idx * line_h
