@@ -5,7 +5,7 @@
 CREATE TABLE IF NOT EXISTS products (
   product_id    TEXT PRIMARY KEY,  -- アットコスメ製品ID
   genre         TEXT,              -- ジャンル(化粧水、乳液など)
-  channel       TEXT,              -- チャンネル(スーパー、ドラッグストアなど)
+  channel       TEXT,              -- チャンネル(ドラッグストア、ドラッグストアなど)
   name          TEXT,              -- 製品名
   brand         TEXT,              -- ブランド名
   image_url     TEXT,              -- 製品画像URL

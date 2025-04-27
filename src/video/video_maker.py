@@ -274,15 +274,15 @@ class VideoMaker:
     def _name_font_size(self, text_len: int) -> int:
         """
         文字数でサイズを粗く段階分け  
-        （基準 ≒ 8 文字のとき self.TITLE_FONT_SIZE * 1.8）
+        （基準 ≒ 8 文字のとき self.TITLE_FONT_SIZE * 1.9）
         """
-        base = int(self.TITLE_FONT_SIZE * 1.8)   # 現行サイズ
+        base = int(self.TITLE_FONT_SIZE * 1.9)   # 現行サイズ
         if text_len <= 6:
             return base + 20          # 少ない ⇒ 大
         elif text_len <= 9:
             return base               # 標準
         elif text_len <= 12:
-            return base - 25           # やや小
+            return base - 30           # やや小
         else:
             return base - 40          # もっと小
         
@@ -1156,8 +1156,9 @@ class VideoMaker:
         # 製品リストをシャッフルして順位を割り当て
         shuffled_products = random.sample(products, len(products))
         shuffled_products = shuffled_products[:7]
+        total_products = len(shuffled_products)
         for i, product in enumerate(shuffled_products):
-            product['new_rank'] = i + 1  # 1位から順に割り当て
+            product['new_rank'] = total_products - i 
         
         try:
             # 一時ディレクトリを作成
@@ -1176,7 +1177,7 @@ class VideoMaker:
                     # main.pyからタイトルを構築
                     channel_intro = title.split('で買える')[0] if 'で買える' in title else ""
                     genre = title.split('で買える')[-1].replace('ランキング', '').strip() if 'で買える' in title else ""
-                    intro_title = f"{channel_intro}で買える{genre}7選！"
+                    intro_title = f"一度はマジで使ってみてほしい{channel_intro}で買える神商品挙げてく。これはブックマーク必須やで"
 
                 intro_img = self._create_improved_intro_slide(channel)
                 intro_slide_path = os.path.join(temp_dir, "intro_slide.png")
@@ -1363,7 +1364,7 @@ class VideoMaker:
                             
                             # コメントを累積スライドに追加
                             comment_font = self.get_font(
-                                self.REVIEW_FONT_SIZE + 15,
+                                self.REVIEW_FONT_SIZE + 30,
                                 font_path=self.YASASHISA_GOTHIC if os.path.exists(self.YASASHISA_GOTHIC) else self.noto_sans_jp_path
                             )
                             draw = ImageDraw.Draw(accumulated_slide)
@@ -1500,7 +1501,7 @@ class VideoMaker:
                         "-i", bgm_path,         # BGMファイル
                         "-filter_complex",
                         # BGMの音量を0.3に調整し、無限ループ
-                        f"[1:a]volume=0.3,aloop=loop=-1:size=2e+09[bgm];"
+                        f"[1:a]volume=0.2,aloop=loop=-1:size=2e+09[bgm];"
                         # 元の音声とBGMをミックス
                         "[0:a][bgm]amix=inputs=2:duration=first[aout]",
                         "-map", "0:v",          # 元の動画の映像

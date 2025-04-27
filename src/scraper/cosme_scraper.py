@@ -75,13 +75,13 @@ class CosmeNetScraper:
         ランキングのベースURLを構築
         
         Args:
-            channel: チャンネル名（例：スーパー、コンビニ）
+            channel: チャンネル名（例：ドラッグストア、コンビニ）
             ranking_type: ランキングの種類（例：最新、お好み、急上昇）
             
         Returns:
             ランキングページのベースURL
         """
-        channel_id = self.CHANNEL_MAP.get(channel, "2")  # デフォルトはスーパー
+        channel_id = self.CHANNEL_MAP.get(channel, "2")  # デフォルトはドラッグストア
         ranking_suffix = self.RANKING_TYPE_MAP.get(ranking_type, "ranking")  # デフォルトは最新
         
         return f"{self.BASE_URL}/categories/pchannel/{channel_id}/{ranking_suffix}/"

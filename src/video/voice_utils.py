@@ -277,7 +277,7 @@ def generate_with_voicevox(text: str, output_path: str, voice_type: str) -> bool
                 return False
             
             query_json = response.json()
-            query_json["volumeScale"] = 2.8  # 音量調整
+            query_json["volumeScale"] = 4.0  # 音量調整
             query_json["speedScale"]  = SPEECH_SPEED
             
             # 音声合成リクエスト

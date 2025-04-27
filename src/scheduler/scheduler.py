@@ -42,7 +42,7 @@ class JobScheduler:
         # ジョブパターン（ジャンル×チャンネル）
         self.job_patterns = list(itertools.product(
             ["化粧水", "乳液", "美容液", "パック"],  # ジャンル
-            ["スーパー"]           # チャンネル
+            ["ドラッグストア"]           # チャンネル
         ))
         
         # シグナルハンドラ設定
