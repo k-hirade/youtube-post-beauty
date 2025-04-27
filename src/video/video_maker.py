@@ -107,7 +107,6 @@ class VideoMaker:
             logger.warning(f"指定したフォント({self.font_path})が見つかりません。代替フォントを使用します。")
             self.font_path = None
 
-
     def _draw_text_italic(
         self,
         base: Image.Image,
@@ -641,7 +640,7 @@ class VideoMaker:
         
         return img.convert("RGB")
     
-    def _create_improved_intro_slide(self, channel: str) -> Image.Image:
+    def _create_main_intro_slide(self, channel: str, genre: str) -> Image.Image:
         bg = self._get_common_background()
         # 背景のぼかし入り写真があるならここで合成しても OK
         y = int(self.VIDEO_HEIGHT * 0.06)
@@ -656,7 +655,7 @@ class VideoMaker:
         heavy110  = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY, 110)
         heavy90  = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY, 90)
         heavy80   = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY, 80)
-        heavy60   = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY, 60)
+        heavy70   = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY, 70)
 
         # ① 一度は
         w = self.calculate_text_width("一度は", heavy130, ImageDraw.Draw(bg))
@@ -700,7 +699,7 @@ class VideoMaker:
         text_len = len(text)
         # フォントを長さで切り替え
         if text_len >= 10:
-            heavy_font = heavy90
+            heavy_font = heavy80
         elif text_len >= 8:
             heavy_font = heavy110
         else: 
@@ -717,11 +716,18 @@ class VideoMaker:
         y += 150
 
         # ④ 神商品（少し大きめ）
-        text = "神商品"
+        text = f"神{genre}"
+        text_len_shohin = len(text)  
+        if text_len_shohin >= 10:
+            heavy_font = heavy110
+        elif text_len_shohin >= 6:
+            heavy_font = heavy130
+        else: 
+            heavy_font = heavy180
         w = self.calculate_text_width(text, heavy180, ImageDraw.Draw(bg))
         self._draw_text_italic(
             bg, text, y,
-            heavy180,
+            heavy_font,
             gradient=[(255, 246, 194), (255, 216, 74), (199, 154, 5)],
             stroke_width=8, stroke_fill=(0, 0, 0),
             bevel=True,
@@ -740,17 +746,6 @@ class VideoMaker:
         )
         y += 100
 
-        # ⑥ フッタ
-        text = "※これはブックマーク必須やで"
-        w = self.calculate_text_width(text, heavy60, ImageDraw.Draw(bg))
-        self.draw_text_effect(
-            bg, text, ((self.VIDEO_WIDTH-w)//2, y),
-            heavy60,
-            fill=(199, 22, 22),
-            inner_stroke_width=2, inner_stroke_fill=(158, 0, 0),
-            glow_radius=20, glow_opacity=0.7
-        )
-
         assets = [
             ("data/assets/atsugesyou.png", "left"),   # 左下
             ("data/assets/building_medical_pharmacy.png", "right"),  # 右下
@@ -767,7 +762,7 @@ class VideoMaker:
                 deco = Image.open(path).convert("RGBA")
 
                 # 画像を大きすぎないサイズ（画面幅 25%・高さ 25% 以内）に収める
-                max_w = int(self.VIDEO_WIDTH * 0.25)
+                max_w = int(self.VIDEO_WIDTH * 0.4)
                 max_h = int(self.VIDEO_HEIGHT * 0.25)
                 dw, dh = deco.size
                 scale = min(max_w / dw, max_h / dh, 1.0)
@@ -784,6 +779,32 @@ class VideoMaker:
             except Exception as e:
                 logger.error(f"装飾画像の読み込み/貼り付けに失敗: {path} - {e}")
 
+        return bg.convert("RGB")
+
+    def _create_bookmark_intro_slide(self, channel: str, genre: str) -> Image.Image:
+        """
+        ブックマーク部分を強調したイントロスライドを作成
+        """
+        bg = self._create_main_intro_slide(channel, genre).convert("RGBA")
+        draw = ImageDraw.Draw(bg)
+        
+        heavy60 = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY, 60)
+        text = "※これはブックマーク必須やで"
+        
+        # 中央配置
+        w = self.calculate_text_width(text, heavy60, draw)
+        x = (self.VIDEO_WIDTH - w) // 2
+        y = self.VIDEO_HEIGHT - 630
+        
+        self.draw_text_effect(
+            bg, text, (x, y),
+            heavy60,
+            fill=(199, 22, 22),
+            inner_stroke_width=2, inner_stroke_fill=(158, 0, 0),
+            glow_radius=20, glow_opacity=0.7
+        )
+        
+        # 最後に RGB モードに戻す (元のメソッドと同じ)
         return bg.convert("RGB")
         
     def _create_product_animation(
@@ -1076,7 +1097,7 @@ class VideoMaker:
         
         # 文字列の半分あたりから適切な区切り位置を探す
         middle_pos = len(text) // 2
-        search_range = 10  # 検索範囲
+        search_range = 4  # 検索範囲
         best_position = middle_pos  # デフォルト位置
         
         # 適切な区切り位置を前後に探索
@@ -1169,57 +1190,192 @@ class VideoMaker:
                 # イントロスライド作成
                 intro_title = None
                 channel_intro = title.split('で買える')[0] if 'で買える' in title else ""
+                genre = title.split('で買える')[-1].replace('ランキング', '').strip() if 'で買える' in title else ""
                 for product in shuffled_products:
                     if 'channel' in product and 'genre' in product:
-                        intro_title = f"一度はマジで使ってみてほしい{channel_intro}で買える神商品挙げてく。これはブックマーク必須やで"
+                        intro_title = f"一度はマジで使ってみてほしい{channel_intro}で買える神{genre}挙げてく。これはブックマーク必須やで"
                         break
                 
                 if not intro_title:
                     # main.pyからタイトルを構築
                     genre = title.split('で買える')[-1].replace('ランキング', '').strip() if 'で買える' in title else ""
-                    intro_title = f"一度はマジで使ってみてほしい{channel_intro}で買える神商品挙げてく。これはブックマーク必須やで"
+                    intro_title = f"一度はマジで使ってみてほしい{channel_intro}で買える神{genre}挙げてく。これはブックマーク必須やで"
 
-                intro_img = self._create_improved_intro_slide(channel)
-                intro_slide_path = os.path.join(temp_dir, "intro_slide.png")
-                intro_img.save(intro_slide_path)
+                # イントロタイトルを前半と後半に分割（「これはブックマーク必須やで」の部分を分ける）
+                main_intro_text = f"一度はマジで使ってみてほしい{channel_intro}で買える神{genre}挙げてく。"
+                bookmark_text = "これはブックマーク必須やで"
+                
+                # メインイントロスライド作成（「これはブックマーク必須やで」を表示しない）
+                main_intro_img = self._create_main_intro_slide(channel, genre)
+                main_intro_slide_path = os.path.join(temp_dir, "main_intro_slide.png")
+                main_intro_img.save(main_intro_slide_path)
+                
+                # ブックマークスライド作成（ブックマーク部分だけを強調表示）
+                bookmark_intro_img = self._create_bookmark_intro_slide(channel, genre)
+                bookmark_intro_slide_path = os.path.join(temp_dir, "bookmark_intro_slide.png")
+                bookmark_intro_img.save(bookmark_intro_slide_path)
                 
                 # イントロ音声生成
                 intro_audio_path = os.path.join(temp_dir, "intro_audio.wav")
                 intro_success = generate_narration(intro_title, intro_audio_path, "random")
                 
-                # イントロ動画セグメント作成
-                intro_video_path = os.path.join(temp_dir, "intro_video.mp4")
-                
-                # ナレーション音声があれば使用、なければ3秒間の無音
+                taiko_sound_path = "data/bgm/和太鼓でドドン.mp3"
+                syouhin_sound_path = "data/bgm/ニュッ3.mp3"
+                                
+                # 音声ファイルの分析と分割（ブックマーク部分のタイミングを特定）
                 if os.path.exists(intro_audio_path) and os.path.getsize(intro_audio_path) > 100:
+                    # 音声ファイルの長さを取得
                     audio_duration = get_audio_duration(intro_audio_path)
-                    display_duration = max(audio_duration + 1.0, 3.0)  # 少し余裕を持たせる
+                    
+                    # 音声分析（簡易的な方法として、全体の長さから推定）
+                    main_part_duration = audio_duration * 0.7  # メインパートは全体の70%と推定
+                    bookmark_part_duration = audio_duration - main_part_duration  # 残りの30%をブックマークパート
+                    
+                    # 1. メインイントロ部分の動画作成
+                    main_intro_audio_path = os.path.join(temp_dir, "main_intro_audio.wav")
+                    extract_cmd = [
+                        "ffmpeg", "-y",
+                        "-i", intro_audio_path,
+                        "-ss", "0",
+                        "-t", str(main_part_duration),
+                        "-c:a", "pcm_s16le",
+                        main_intro_audio_path
+                    ]
+                    
+                    try:
+                        subprocess.run(extract_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                        logger.info(f"メインイントロ音声を切り出しました: {main_intro_audio_path}")
+                        
+                        # メインイントロに和太鼓効果音をミックス
+                        main_intro_with_effect_path = os.path.join(temp_dir, "main_intro_with_effect.wav")
+                        
+                        if os.path.exists(taiko_sound_path):
+                            # 効果音と音声をミックスするFFmpegコマンド
+                            mix_cmd = [
+                                "ffmpeg", "-y",
+                                "-i", main_intro_audio_path,  # メインナレーション
+                                "-i", taiko_sound_path,  # 和太鼓効果音
+                                "-filter_complex",
+                                "[1:a]adelay=0|0,volume=1.2[effect];[0:a][effect]amix=inputs=2:duration=first[aout]",
+                                "-map", "[aout]",
+                                "-c:a", "pcm_s16le",
+                                main_intro_with_effect_path
+                            ]
+                            
+                            try:
+                                subprocess.run(mix_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                                logger.info(f"メインイントロに和太鼓効果音を追加しました")
+                                main_intro_audio_path = main_intro_with_effect_path
+                            except subprocess.CalledProcessError as e:
+                                logger.error(f"和太鼓効果音の追加に失敗: {e.stderr}")
+                        
+                        # メインイントロ動画の作成
+                        main_intro_video_path = os.path.join(temp_dir, "main_intro_video.mp4")
+                        cmd = [
+                            "ffmpeg", "-y",
+                            "-loop", "1",
+                            "-i", main_intro_slide_path,
+                            "-i", main_intro_audio_path,
+                            "-c:v", "libx264",
+                            "-tune", "stillimage",
+                            "-c:a", "aac",
+                            "-b:a", "192k",
+                            "-pix_fmt", "yuv420p",
+                            "-shortest"
+                        ]
+                        
+                        cmd.append(main_intro_video_path)
+                        subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                        video_segments.append(main_intro_video_path)
+                        
+                        # 2. ブックマーク部分の動画作成
+                        # ブックマーク用の音声を切り出し
+                        bookmark_audio_path = os.path.join(temp_dir, "bookmark_audio.wav")
+                        extract_cmd = [
+                            "ffmpeg", "-y",
+                            "-i", intro_audio_path,
+                            "-ss", str(main_part_duration),
+                            "-t", str(bookmark_part_duration),
+                            "-c:a", "pcm_s16le",
+                            bookmark_audio_path
+                        ]
+                        
+                        subprocess.run(extract_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                        logger.info(f"ブックマーク音声を切り出しました: {bookmark_audio_path}")
+                        
+                        # ブックマーク動画の作成
+                        bookmark_video_path = os.path.join(temp_dir, "bookmark_video.mp4")
+                        cmd = [
+                            "ffmpeg", "-y",
+                            "-loop", "1",
+                            "-i", bookmark_intro_slide_path,
+                            "-i", bookmark_audio_path,
+                            "-c:v", "libx264",
+                            "-tune", "stillimage",
+                            "-c:a", "aac",
+                            "-b:a", "192k",
+                            "-pix_fmt", "yuv420p",
+                            "-shortest"
+                        ]
+                        
+                        cmd.append(bookmark_video_path)
+                        subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                        video_segments.append(bookmark_video_path)
+                        
+                    except subprocess.CalledProcessError as e:
+                        logger.error(f"イントロ音声の分割・動画作成エラー: {e.stderr}")
+                        
+                        # エラーが発生した場合、通常の方法でイントロ動画を作成
+                        logger.warning("通常方法でイントロ動画を作成します")
+                        intro_img = self._create_improved_intro_slide(channel)
+                        intro_slide_path = os.path.join(temp_dir, "intro_slide.png")
+                        intro_img.save(intro_slide_path)
+                        
+                        intro_video_path = os.path.join(temp_dir, "intro_video.mp4")
+                        cmd = [
+                            "ffmpeg", "-y",
+                            "-loop", "1",
+                            "-i", intro_slide_path,
+                            "-i", intro_audio_path,
+                            "-c:v", "libx264",
+                            "-tune", "stillimage",
+                            "-c:a", "aac",
+                            "-b:a", "192k",
+                            "-pix_fmt", "yuv420p",
+                            "-shortest"
+                        ]
+                        
+                        cmd.append(intro_video_path)
+                        subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                        video_segments.append(intro_video_path)
                 else:
-                    logger.warning(f"イントロの音声ファイルが存在しないか無効です。無音を使用します。")
+                    # 音声生成に失敗した場合、通常の方法でイントロ動画を作成
+                    logger.warning(f"イントロの音声ファイルが存在しないか無効です。通常方法でイントロ動画を作成します。")
                     display_duration = 3.0
                     intro_audio_path = os.path.join(temp_dir, "silent_intro.wav")
                     create_silent_audio(intro_audio_path, display_duration)
-                
-                # イントロスライドを動画に変換
-                cmd = [
-                    "ffmpeg", "-y",
-                    "-loop", "1",
-                    "-i", intro_slide_path,
-                    "-i", intro_audio_path,
-                    "-c:v", "libx264",
-                    "-tune", "stillimage",
-                    "-c:a", "aac",
-                    "-b:a", "192k",
-                    "-pix_fmt", "yuv420p",
-                    "-shortest"
-                ]
-                
-                cmd.append(intro_video_path)
-                try:
-                    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, text=True)
+                    
+                    intro_img = self._create_main_intro_slide(channel, genre)
+                    intro_slide_path = os.path.join(temp_dir, "intro_slide.png")
+                    intro_img.save(intro_slide_path)
+                    
+                    intro_video_path = os.path.join(temp_dir, "intro_video.mp4")
+                    cmd = [
+                        "ffmpeg", "-y",
+                        "-loop", "1",
+                        "-i", intro_slide_path,
+                        "-i", intro_audio_path,
+                        "-c:v", "libx264",
+                        "-tune", "stillimage",
+                        "-c:a", "aac",
+                        "-b:a", "192k",
+                        "-pix_fmt", "yuv420p",
+                        "-shortest"
+                    ]
+                    
+                    cmd.append(intro_video_path)
+                    subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                     video_segments.append(intro_video_path)
-                except subprocess.CalledProcessError as e:
-                    logger.error(f"イントロ動画生成エラー: {e.stderr}")
                     
                 # 各製品ごとに動画セグメントを作成
                 for product in shuffled_products:
@@ -1239,6 +1395,31 @@ class VideoMaker:
                     if os.path.exists(product_audio_path) and os.path.getsize(product_audio_path) > 100:
                         audio_duration = get_audio_duration(product_audio_path)
                         display_duration = max(audio_duration + 0.5, 3.0)  # 少し余裕を持たせる
+                        
+                        # 各製品紹介に和太鼓効果音をミックス
+                        product_audio_with_effect_path = os.path.join(temp_dir, f"product_{rank}_audio_with_effect.wav")
+                        
+                        if os.path.exists(syouhin_sound_path):
+                            # 効果音と音声をミックスするFFmpegコマンド
+                            mix_cmd = [
+                                "ffmpeg", "-y",
+                                "-i", product_audio_path,  # ナレーション
+                                "-i", syouhin_sound_path,  # 和太鼓効果音
+                                "-filter_complex",
+                                "[1:a]adelay=0|0,volume=1.0[effect];[0:a][effect]amix=inputs=2:duration=first[aout]",
+                                "-map", "[aout]",
+                                "-c:a", "pcm_s16le",
+                                product_audio_with_effect_path
+                            ]
+                            
+                            try:
+                                subprocess.run(mix_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                                logger.info(f"製品{rank}の紹介に和太鼓効果音を追加しました")
+                                product_audio_path = product_audio_with_effect_path  # 効果音入りのパスに置き換え
+                            except subprocess.CalledProcessError as e:
+                                logger.error(f"製品{rank}の和太鼓効果音の追加に失敗: {e.stderr}")
+                        else:
+                            logger.warning(f"和太鼓効果音ファイルが見つかりません: {taiko_sound_path}")
                     else:
                         logger.warning(f"製品 {rank} の音声ファイルが存在しないか無効です。無音を使用します。")
                         display_duration = 3.0
@@ -1340,7 +1521,6 @@ class VideoMaker:
                     
                     # コメントを順番に追加していく
                     if reviews:
-                        # コメント用のベースとなるスライド（商品名とブランド名を削除済み）を作成
                         base_slide = self._create_product_slide(product, rank, show_name=False)
                         draw = ImageDraw.Draw(base_slide)
                         
@@ -1500,8 +1680,8 @@ class VideoMaker:
                         "-stream_loop", "-1",   # BGMをループ再生
                         "-i", bgm_path,         # BGMファイル
                         "-filter_complex",
-                        # BGMの音量を0.3に調整し、無限ループ
-                        f"[1:a]volume=0.2,aloop=loop=-1:size=2e+09[bgm];"
+                        # BGMの音量を0.25に調整し、無限ループ
+                        f"[1:a]volume=0.25,aloop=loop=-1:size=2e+09[bgm];"
                         # 元の音声とBGMをミックス
                         "[0:a][bgm]amix=inputs=2:duration=first[aout]",
                         "-map", "0:v",          # 元の動画の映像

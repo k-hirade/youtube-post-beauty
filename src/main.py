@@ -70,7 +70,7 @@ def parse_args():
                         choices=['最新', 'お好み'],
                         help='最初に試すランキングの種類')
     
-    parser.add_argument('--min-products', type=int, default=7,
+    parser.add_argument('--min-products', type=int, default=10,
                         help='最小必要製品数')
     
     parser.add_argument('--max-products', type=int, default=10,
