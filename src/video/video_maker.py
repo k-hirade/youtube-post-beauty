@@ -595,7 +595,7 @@ class VideoMaker:
                 self.draw_text_effect(
                     img, line, (x, y), name_font,
                     fill=(0xB5, 0x2E, 0x2E),
-                    gradient=[(0xD7, 0x55, 0x4F), (0x82, 0x16, 0x16)],
+                    gradient=[(0xD7, 0x55, 0x4F), (0x82, 0x16, 0x16)], 
                     inner_stroke_width=4,  inner_stroke_fill=(255, 255, 255),
                     stroke_width=10, stroke_fill=(0, 0, 0),
                     glow_radius=15, glow_opacity=0.50
@@ -668,12 +668,12 @@ class VideoMaker:
         )
         y += 100
 
-        # ② マジで使ってみて欲しい（4 行構成でも OK）
+        # ② マジで使ってみて欲しい
         w = self.calculate_text_width("マジで", heavy220, ImageDraw.Draw(bg))
         self.draw_text_effect(
             bg, "マジで", ((self.VIDEO_WIDTH-w)//2, y),
             heavy220,
-            gradient=[(215, 85, 79), (130, 22, 22)],
+            gradient=[(0xD7, 0x55, 0x4F), (0x82, 0x16, 0x16)],
             inner_stroke_width=4, inner_stroke_fill=(255, 255, 255),
             stroke_width=10, stroke_fill=(0, 0, 0),
             glow_radius=15, glow_opacity=0.5
@@ -685,7 +685,7 @@ class VideoMaker:
             self.draw_text_effect(
                 bg, line, ((self.VIDEO_WIDTH-w)//2, y),
                 heavy150,
-                gradient=[(215, 85, 79), (130, 22, 22)],
+                gradient=[(0xD7, 0x55, 0x4F), (0x82, 0x16, 0x16)],
                 inner_stroke_width=4, inner_stroke_fill=(255, 255, 255),
                 stroke_width=10, stroke_fill=(0, 0, 0),
                 glow_radius=15, glow_opacity=0.5
@@ -744,7 +744,7 @@ class VideoMaker:
             y += 200
         else: 
             y += 230
-            
+
         # ⑤ 挙げてくw
         w = self.calculate_text_width("挙げてくw", heavy80, ImageDraw.Draw(bg))
         self.draw_text_effect(
