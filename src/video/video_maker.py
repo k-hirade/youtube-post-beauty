@@ -756,8 +756,8 @@ class VideoMaker:
             ("data/assets/building_medical_pharmacy.png", "right"),  # 右下
         ]
 
-        pad_x = int(self.VIDEO_WIDTH * 0.02)   # 画面端から 2% だけ余白
-        pad_y = int(self.VIDEO_HEIGHT * 0.02)
+        pad_x = int(self.VIDEO_WIDTH * 0.1)   # 画面端から 2% だけ余白
+        pad_y = int(self.VIDEO_HEIGHT * 0.1)
 
         for path, side in assets:
             if not os.path.exists(path):
@@ -786,359 +786,270 @@ class VideoMaker:
 
         return bg.convert("RGB")
         
-    def create_video(
-            self,
-            products: List[Dict[str, Any]],
-            title: str,
-            channel: str,
-            output_filename: Optional[str] = None
-        ) -> str:
-            """
-            製品リストからショート動画を作成（BGM追加機能対応）
+    def _create_product_animation(
+        self, 
+        product: Dict[str, Any], 
+        rank: int, 
+        output_path: str, 
+        show_name: bool = True,
+        animation_duration: float = 0.1
+    ) -> bool:
+        """
+        商品情報のアニメーション付き動画を作成
+        
+        Args:
+            product: 製品情報
+            rank: 順位
+            output_path: 出力動画のパス
+            show_name: 商品名を表示するかどうか
+            animation_duration: アニメーション時間（秒）
+                
+        Returns:
+            bool: 成功したかどうか
+        """
+        try:
+            # ベース画像の作成 - 全てのフレームに共通
+            base_img = self._get_common_background()
+            draw = ImageDraw.Draw(base_img)
             
-            Args:
-                products: 製品情報リスト
-                title: 動画タイトル
-                output_filename: 出力ファイル名
+            # 画像読み込みの準備
+            img_loaded = False
+            product_img = None
             
-            Returns:
-                str: 作成した動画のパス
-            """
-            logger.info(f"動画作成開始: {title}")
+            # 画像の読み込み処理（既存のコードと同様）
+            if 'local_image_path' in product and product['local_image_path']:
+                local_path = product['local_image_path']
+                if os.path.exists(local_path):
+                    try:
+                        product_img = Image.open(local_path)
+                        img_loaded = True
+                    except Exception as e:
+                        logger.error(f"ローカル画像読み込みエラー: {local_path} - {str(e)}")
+                        img_loaded = False
             
-            # 出力ファイル名が指定されていない場合は生成
-            if not output_filename:
-                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                safe_title = ''.join(c if c.isalnum() else '_' for c in title)
-                output_filename = f"{safe_title}_{timestamp}.mp4"
+            if not img_loaded and 'product_id' in product:
+                img_path = os.path.join(self.temp_dir, f"{product['product_id']}.jpg")
+                if os.path.exists(img_path):
+                    try:
+                        product_img = Image.open(img_path)
+                        img_loaded = True
+                    except Exception as e:
+                        logger.error(f"一時ディレクトリの画像読み込みエラー: {img_path} - {str(e)}")
+                        img_loaded = False
             
-            output_path = os.path.join(self.output_dir, output_filename)
-            
-            # 製品リストをシャッフルして順位を割り当て
-            shuffled_products = random.sample(products, len(products))
-            shuffled_products = shuffled_products[:7]
-            for i, product in enumerate(shuffled_products):
-                product['new_rank'] = i + 1  # 1位から順に割り当て
-            
-            try:
-                # 一時ディレクトリを作成
-                with tempfile.TemporaryDirectory() as temp_dir:
-                    # 動画セグメントのパスリスト
-                    video_segments = []
+            if not img_loaded and 'image_url' in product and product['image_url']:
+                image_url = product['image_url']
+                try:
+                    logger.info(f"画像をURLから直接ダウンロード中: {image_url}")
+                    img_path = os.path.join(self.temp_dir, f"{product['product_id']}.jpg")
+                    os.makedirs(os.path.dirname(img_path), exist_ok=True)
                     
-                    # イントロスライド作成
-                    intro_title = None
-                    for product in shuffled_products:
-                        if 'channel' in product and 'genre' in product:
-                            intro_title = f"{product['channel']}で買える{product['genre']}7選！"
-                            break
+                    import requests
+                    response = requests.get(image_url, timeout=30)
+                    response.raise_for_status()
                     
-                    if not intro_title:
-                        # main.pyからタイトルを構築
-                        channel_intro = title.split('で買える')[0] if 'で買える' in title else ""
-                        genre = title.split('で買える')[-1].replace('ランキング', '').strip() if 'で買える' in title else ""
-                        intro_title = f"{channel_intro}で買える{genre}7選！"
+                    with open(img_path, 'wb') as f:
+                        f.write(response.content)
+                        
+                    product_img = Image.open(img_path)
+                    img_loaded = True
+                    logger.info(f"画像を直接ダウンロードして保存: {img_path}")
+                except Exception as e:
+                    logger.error(f"画像ダウンロードエラー: {str(e)}")
+                    img_loaded = False
 
+            # 商品名の準備
+            name_lines = self._prepare_product_name(product.get("name", "No Name"))
+            start_y = 400 - (len(name_lines)-1)*40
+            name_block_bottom = self._calc_name_block_bottom(start_y, name_lines)
+            empty_height = 80
+            
+            # 画像サイズ設定
+            if img_loaded:
+                img_width, img_height = product_img.size
+                logger.info(f"元の画像サイズ: {img_width}x{img_height}")
+                
+                # 縦横比の計算
+                aspect_ratio = img_width / img_height if img_height > 0 else 1
+                
+                # 幅を画面の80%に設定
+                new_width = int(self.VIDEO_WIDTH * 0.8)
+                new_height = int(new_width / aspect_ratio)
+                
+                logger.info(f"リサイズ後の画像サイズ: {new_width}x{new_height}")
+                
+                # リサイズ
+                product_img = product_img.resize((new_width, new_height), Image.LANCZOS)
+                
+                # 画像の最終位置（アニメーション後）
+                img_x = (self.VIDEO_WIDTH - new_width) // 2
+                img_y = name_block_bottom + 250
+            else:
+                new_width = int(self.VIDEO_WIDTH * 0.8)
+                new_height = int(new_width)
+                img_x = (self.VIDEO_WIDTH - new_width) // 2
+                img_y = name_block_bottom + 250
 
-                    intro_img = self._create_improved_intro_slide(channel)
-                    intro_slide_path = os.path.join(temp_dir, "intro_slide.png")
-                    intro_img.save(intro_slide_path)
+            # ランク表示用のフォント
+            rank_font = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY, int(self.TITLE_FONT_SIZE * 2.0))
+            rank_text = f"第{rank}位"
+            
+            # アニメーションの一時ディレクトリ
+            with tempfile.TemporaryDirectory() as animation_dir:
+                # フレーム数の設定
+                fps = 30
+                frame_count = max(int(fps * animation_duration), 3)  # 最低3フレーム
+                
+                # アニメーションフレームの生成
+                frame_paths = []
+                
+                # アニメーションフレーム
+                for frame in range(frame_count + 1):  # +1で最終フレームを含める
+                    progress = frame / frame_count  # 0.0 から 1.0 の進行度
                     
-                    # イントロ音声生成
-                    intro_audio_path = os.path.join(temp_dir, "intro_audio.wav")
-                    intro_success = generate_narration(intro_title, intro_audio_path, "random")
+                    # 現在のフレームの画像を作成
+                    frame_img = self._get_common_background()
+                    draw = ImageDraw.Draw(frame_img)
                     
-                    # イントロ動画セグメント作成
-                    intro_video_path = os.path.join(temp_dir, "intro_video.mp4")
+                    # ランクのアニメーション（上から下へ）
+                    if show_name:
+                        w = self.calculate_text_width(rank_text, rank_font, draw)
+                        x = (self.VIDEO_WIDTH - w) // 2
+                        
+                        # 開始位置は画面上部の外（-100px）、終了位置は150px
+                        start_rank_y = -100
+                        end_rank_y = 150
+                        current_rank_y = int(start_rank_y + (end_rank_y - start_rank_y) * progress)
+                        
+                        # ランクテキストを描画
+                        self.draw_text_effect(
+                            frame_img, rank_text, (x, current_rank_y), rank_font,
+                            fill=(0xF7, 0xF7, 0xF7),
+                            stroke_width=10, stroke_fill=(0, 0, 0),
+                            glow_radius=8, glow_opacity=0.35
+                        )
+                        
+                        # 商品名のアニメーション（上から下へ）
+                        current_y = start_y
+                        for line in name_lines:
+                            text_len = len(line.replace(" ", ""))
+                            font_size = self._name_font_size(text_len)
+                            name_font = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY, font_size)
+                            
+                            w = self.calculate_text_width(line, name_font, draw)
+                            x = (self.VIDEO_WIDTH - w) // 2
+                            
+                            # 開始位置は画面上部の外（-200px）、終了位置は現在のy座標
+                            start_name_y = -200
+                            end_name_y = current_y
+                            current_name_y = int(start_name_y + (end_name_y - start_name_y) * progress)
+                            
+                            # 商品名テキストを描画
+                            self.draw_text_effect(
+                                frame_img, line, (x, current_name_y), name_font,
+                                fill=(0xB5, 0x2E, 0x2E),
+                                gradient=[(0xD7, 0x55, 0x4F), (0x82, 0x16, 0x16)],
+                                inner_stroke_width=4, inner_stroke_fill=(255, 255, 255),
+                                stroke_width=10, stroke_fill=(0, 0, 0),
+                                glow_radius=15, glow_opacity=0.50
+                            )
+                            current_y += font_size + empty_height
                     
-                    # ナレーション音声があれば使用、なければ3秒間の無音
-                    if os.path.exists(intro_audio_path) and os.path.getsize(intro_audio_path) > 100:
-                        audio_duration = get_audio_duration(intro_audio_path)
-                        display_duration = max(audio_duration + 1.0, 3.0)  # 少し余裕を持たせる
-                    else:
-                        logger.warning(f"イントロの音声ファイルが存在しないか無効です。無音を使用します。")
-                        display_duration = 3.0
-                        intro_audio_path = os.path.join(temp_dir, "silent_intro.wav")
-                        create_silent_audio(intro_audio_path, display_duration)
+                    # 商品画像のアニメーション（下から上へ）
+                    if img_loaded:
+                        # 開始位置は画面下部の外（self.VIDEO_HEIGHT + 100px）、終了位置はimg_y
+                        start_img_y = self.VIDEO_HEIGHT + 100
+                        end_img_y = img_y
+                        current_img_y = int(start_img_y + (end_img_y - start_img_y) * progress)
+                        
+                        # 画像貼り付け
+                        frame_img.paste(product_img, (img_x, current_img_y))
                     
-                    # イントロスライドを動画に変換
-                    cmd = [
+                    # フレームを保存
+                    frame_path = os.path.join(animation_dir, f"frame_{frame:03d}.png")
+                    frame_img = frame_img.convert("RGB")
+                    frame_img.save(frame_path)
+                    frame_paths.append(frame_path)
+                
+                # 最終フレーム（アニメーション後の静的な状態）
+                final_frame = frame_paths[-1]
+                static_frame_path = os.path.join(animation_dir, "static_frame.png")
+                shutil.copy(final_frame, static_frame_path)
+                
+                # フレームリストファイルの作成（アニメーションフレーム）
+                anim_frames_list_path = os.path.join(animation_dir, "anim_frames.txt")
+                with open(anim_frames_list_path, "w") as f:
+                    for i, frame_path in enumerate(frame_paths):
+                        f.write(f"file '{frame_path}'\n")
+                        # 最後のフレーム以外は1/fpsの持続時間
+                        if i < len(frame_paths) - 1:
+                            f.write(f"duration {1/fps}\n")
+                        else:
+                            # 最後のフレームには特別な持続時間を指定しない（最後のフレームはoutfileの生成に使われるため）
+                            f.write(f"duration {1/fps}\n")
+                
+                # 一時的なアニメーション部分のみの動画を作成
+                temp_anim_path = os.path.join(animation_dir, "temp_anim.mp4")
+                anim_cmd = [
+                    "ffmpeg", "-y",
+                    "-f", "concat",
+                    "-safe", "0",
+                    "-i", anim_frames_list_path,
+                    "-vsync", "vfr",
+                    "-pix_fmt", "yuv420p",
+                    temp_anim_path
+                ]
+                
+                try:
+                    subprocess.run(anim_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    logger.info(f"アニメーション部分の動画を作成しました: {temp_anim_path}")
+                    
+                    # 最終フレームを静止画として出力
+                    static_video_path = os.path.join(animation_dir, "static_frame.mp4")
+                    
+                    # 最終フレームを5秒間（後で音声に合わせて調整するための十分な長さ）の静止動画として作成
+                    static_cmd = [
                         "ffmpeg", "-y",
                         "-loop", "1",
-                        "-i", intro_slide_path,
-                        "-i", intro_audio_path,
+                        "-i", static_frame_path,
                         "-c:v", "libx264",
-                        "-tune", "stillimage",
-                        "-c:a", "aac",
-                        "-b:a", "192k",
+                        "-t", "5",  # 十分な長さ（音声に合わせて後でカットされる）
                         "-pix_fmt", "yuv420p",
-                        "-shortest"
+                        static_video_path
                     ]
                     
-                    cmd.append(intro_video_path)
-                    try:
-                        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, text=True)
-                        video_segments.append(intro_video_path)
-                    except subprocess.CalledProcessError as e:
-                        logger.error(f"イントロ動画生成エラー: {e.stderr}")
-                        
-                    # 各製品ごとに動画セグメントを作成
-                    for product in shuffled_products:
-                        rank = product['new_rank']
-                        product_name = product['name']
-                        brand_name = product['brand']
-                        reviews = product.get('reviews', [])
-                        
-                        # 製品名・ブランド名だけのナレーション用テキスト
-                        product_intro_text = f"{rank}位、{brand_name}の{product_name}"
-                        
-                        # 1. 製品画像と商品名のみを表示したスライド生成
-                        product_slide = self._create_product_slide(product, rank, show_name=True)
-                        product_slide_path = os.path.join(temp_dir, f"product_{rank}_slide.png")
-                        product_slide.save(product_slide_path)
-                        
-                        # 製品紹介ナレーション音声を生成
-                        product_audio_path = os.path.join(temp_dir, f"product_{rank}_audio.wav")
-                        success = generate_narration(product_intro_text, product_audio_path, "random")
-                        
-                        # 製品画像の動画セグメントを作成
-                        product_video_path = os.path.join(temp_dir, f"product_{rank}_video.mp4")
-                        
-                        # ナレーション音声があれば使用、なければ3秒間の無音
-                        if os.path.exists(product_audio_path) and os.path.getsize(product_audio_path) > 100:
-                            audio_duration = get_audio_duration(product_audio_path)
-                            display_duration = max(audio_duration + 0.5, 3.0)  # 少し余裕を持たせる
-                        else:
-                            logger.warning(f"製品 {rank} の音声ファイルが存在しないか無効です。無音を使用します。")
-                            display_duration = 3.0
-                            product_audio_path = os.path.join(temp_dir, f"silent_{rank}.wav")
-                            create_silent_audio(product_audio_path, display_duration)
-                        
-                        # 製品スライドを動画に変換
-                        cmd = [
-                            "ffmpeg", "-y",
-                            "-loop", "1",
-                            "-i", product_slide_path,
-                            "-i", product_audio_path,
-                            "-c:v", "libx264",
-                            "-tune", "stillimage",
-                            "-c:a", "aac",
-                            "-b:a", "192k",
-                            "-pix_fmt", "yuv420p",
-                            "-shortest"
-                        ]
-                        
-                        cmd.append(product_video_path)
-                        try:
-                            result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, text=True)
-                        except subprocess.CalledProcessError as e:
-                            logger.error(f"製品 {rank} の動画生成エラー: {e.stderr}")
-                            raise
-                        
-                        video_segments.append(product_video_path)
-                        
-                        # コメントを順番に追加していく
-                        if reviews:
-                            # コメント用のベースとなるスライド（商品名とブランド名を削除済み）を作成
-                            base_slide = self._create_product_slide(product, rank, show_name=False)
-                            draw = ImageDraw.Draw(base_slide)
-                            
-                            # ベーススライドを保存
-                            base_slide_path = os.path.join(temp_dir, f"product_{rank}_base_slide.png")
-                            base_slide.save(base_slide_path)
-                            
-                            # 表示済みコメントを保持するスライド
-                            accumulated_slide = base_slide.copy()
-                            
-                            # コメント位置を定義
-                            positions = ["top", "middle", "bottom"]
-                            
-                            # コメントを順番に表示・読み上げる
-                            for i, review in enumerate(reviews[:3]):
-                                if not review:
-                                    continue
-                                comment_text = str(review) 
-                                # コメント位置
-                                comment_position = positions[i % len(positions)]
-                                
-                                # コメントを累積スライドに追加
-                                comment_font = self.get_font(
-                                    self.REVIEW_FONT_SIZE + 15,
-                                    font_path=self.YASASHISA_GOTHIC if os.path.exists(self.YASASHISA_GOTHIC) else self.noto_sans_jp_path
-                                )
-                                draw = ImageDraw.Draw(accumulated_slide)
-
-                                # テキスト幅を調整して折り返し
-                                max_text_width = int(self.VIDEO_WIDTH * 0.78)
-                                words = list(comment_text)
-                                lines, current = [], ""
-                                for ch in words:
-                                    if self.calculate_text_width(current + ch, comment_font, draw) <= max_text_width:
-                                        current += ch
-                                    else:
-                                        lines.append(current)
-                                        current = ch
-                                if current:
-                                    lines.append(current)
-
-                                # バルーンサイズ計算
-                                line_h = int((self.REVIEW_FONT_SIZE + 15) * 1.4)
-                                text_h = line_h * len(lines)
-                                text_w = max(self.calculate_text_width(l, comment_font, draw) for l in lines)
-                                pad_x, pad_y = 40, 30
-                                box_w = text_w + pad_x * 2
-                                box_h = text_h + pad_y * 2
-
-                                # 位置決定
-                                center_x = self.VIDEO_WIDTH // 2
-                                if comment_position == "top":
-                                    box_y = int(self.VIDEO_HEIGHT * 0.25)
-                                elif comment_position == "middle":
-                                    box_y = int(self.VIDEO_HEIGHT * 0.5) - box_h // 2
-                                else:  # bottom
-                                    box_y = int(self.VIDEO_HEIGHT * 0.75) - box_h
-
-                                box_x = center_x - box_w // 2
-
-                                # バルーン（角丸長方形）を描画
-                                border_col = self.COMMENT_COLORS[i % 3]
-                                rect = [
-                                    (box_x, box_y),
-                                    (box_x + box_w, box_y + box_h)
-                                ]
-                                # Pillow ≥ 9.2 なら rounded_rectangle が使える
-                                draw.rounded_rectangle(
-                                    rect,
-                                    radius=self.COMMENT_CORNER_RADIUS,
-                                    fill=(255, 255, 255),
-                                    outline=border_col,
-                                    width=self.COMMENT_BORDER_PX
-                                )
-
-                                # テキスト描画
-                                for idx, line in enumerate(lines):
-                                    tx = center_x - self.calculate_text_width(line, comment_font, draw) // 2
-                                    ty = box_y + pad_y + idx * line_h
-                                    draw.text((tx, ty), line, font=comment_font, fill=(0, 0, 0))
-                                
-                                # 現在の累積スライドを保存（コメント追加後）
-                                comment_slide_path = os.path.join(temp_dir, f"product_{rank}_comment_{i+1}.png")
-                                accumulated_slide.save(comment_slide_path)
-                                
-                                # コメント用の音声を生成
-                                comment_audio_path = os.path.join(temp_dir, f"product_{rank}_comment_{i+1}_audio.wav")
-                                comment_success = generate_narration(review, comment_audio_path, "random")
-                                
-                                # コメントの音声が存在するか確認
-                                if not os.path.exists(comment_audio_path) or os.path.getsize(comment_audio_path) < 100:
-                                    logger.warning(f"製品 {rank} のコメント {i+1} の音声ファイルが存在しないか無効です。無音を使用します。")
-                                    comment_audio_path = os.path.join(temp_dir, f"silent_comment_{rank}_{i+1}.wav")
-                                    create_silent_audio(comment_audio_path, 3.0)
-                                
-                                # 個別のコメントスライドを動画に変換
-                                comment_video_path = os.path.join(temp_dir, f"product_{rank}_comment_{i+1}_video.mp4")
-                                
-                                cmd = [
-                                    "ffmpeg", "-y",
-                                    "-loop", "1",
-                                    "-i", comment_slide_path,
-                                    "-i", comment_audio_path,
-                                    "-c:v", "libx264",
-                                    "-tune", "stillimage",
-                                    "-c:a", "aac",
-                                    "-b:a", "192k",
-                                    "-pix_fmt", "yuv420p",
-                                    "-shortest"
-                                ]
-                                
-                                cmd.append(comment_video_path)
-                                
-                                try:
-                                    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, text=True)
-                                except subprocess.CalledProcessError as e:
-                                    logger.error(f"製品 {rank} のコメント {i+1} の動画生成エラー: {e.stderr}")
-                                    raise
-                                
-                                # 動画セグメントに追加
-                                video_segments.append(comment_video_path)
+                    subprocess.run(static_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    logger.info(f"静止画部分の動画を作成しました: {static_video_path}")
                     
-                    # すべての動画セグメントを連結するファイル作成
-                    concat_file = os.path.join(temp_dir, "concat.txt")
-                    with open(concat_file, "w") as f:
-                        for segment in video_segments:
-                            f.write(f"file '{segment}'\n")
+                    # 最後に両方を結合
+                    list_file_path = os.path.join(animation_dir, "final_list.txt")
+                    with open(list_file_path, "w") as f:
+                        f.write(f"file '{temp_anim_path}'\n")
+                        f.write(f"file '{static_video_path}'\n")
                     
-                    # まずBGMなしで動画を連結
-                    temp_video_path = os.path.join(temp_dir, "no_bgm_output.mp4")
-                    concat_cmd = [
+                    final_cmd = [
                         "ffmpeg", "-y",
                         "-f", "concat",
                         "-safe", "0",
-                        "-i", concat_file,
+                        "-i", list_file_path,
                         "-c", "copy",
-                        temp_video_path
+                        output_path
                     ]
                     
-                    try:
-                        result = subprocess.run(concat_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, text=True)
-                    except subprocess.CalledProcessError as e:
-                        logger.error(f"最終動画の連結エラー: {e.stderr}")
-                        raise
+                    subprocess.run(final_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    logger.info(f"アニメーション付き動画を作成しました: {output_path}")
+                    return True
                     
-                    # 動画の長さを取得
-                    video_duration = self._get_video_duration(temp_video_path)
-                    if video_duration <= 0:
-                        logger.warning("動画の長さが取得できませんでした。デフォルト値を使用します。")
-                        video_duration = 60.0
+                except subprocess.CalledProcessError as e:
+                    logger.error(f"FFmpeg実行エラー: {e}")
+                    return False
                     
-                    # BGMを追加
-                    bgm_path = os.path.join(self.bgm_dir, "しゅわしゅわハニーレモン.mp3")
-                    if not os.path.exists(bgm_path):
-                        logger.warning(f"BGMファイルが見つかりません: {bgm_path}")
-                        logger.info("BGMなしで動画を出力します。")
-                        os.rename(temp_video_path, output_path)
-                    else:
-                        # BGMを追加するコマンド
-                        bgm_cmd = [
-                            "ffmpeg", "-y",
-                            "-i", temp_video_path,  # 元の動画
-                            "-stream_loop", "-1",   # BGMをループ再生
-                            "-i", bgm_path,         # BGMファイル
-                            "-filter_complex",
-                            # BGMの音量を0.3に調整し、無限ループ
-                            f"[1:a]volume=0.3,aloop=loop=-1:size=2e+09[bgm];"
-                            # 元の音声とBGMをミックス
-                            "[0:a][bgm]amix=inputs=2:duration=first[aout]",
-                            "-map", "0:v",          # 元の動画の映像
-                            "-map", "[aout]",       # ミックスした音声
-                            "-c:v", "copy",
-                            "-c:a", "aac",
-                            "-shortest",            # 最短の入力に合わせる
-                            "-t", str(video_duration),  # 元の動画の長さを維持
-                            output_path
-                        ]
-                        
-                        try:
-                            result = subprocess.run(bgm_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, text=True)
-                            logger.info(f"BGM付き動画を作成しました: {output_path}")
-                        except subprocess.CalledProcessError as e:
-                            logger.error(f"BGM追加中にエラー: {e.stderr}")
-                            # エラーが発生した場合は元の動画を使用
-                            os.rename(temp_video_path, output_path)
-                            logger.info(f"BGMなしで動画を出力しました: {output_path}")
-                    
-                    # 一時ファイルの削除
-                    if os.path.exists(temp_video_path) and os.path.exists(output_path):
-                        os.remove(temp_video_path)
-                    
-                    logger.info(f"動画作成完了: {output_path}")
-                    return output_path
-                    
-            except Exception as e:
-                logger.error(f"動画作成エラー: {str(e)}")
-                import traceback
-                logger.error(traceback.format_exc())
-                raise
+            return True
+        except Exception as e:
+            logger.error(f"アニメーション作成中にエラー: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return False
 
     def _get_video_duration(self, video_path):
         """動画ファイルの長さを取得する"""
@@ -1156,3 +1067,419 @@ class VideoMaker:
         except Exception as e:
             logger.error(f"動画長さ取得例外: {e}")
             return 0
+
+    def create_video(
+            self,
+            products: List[Dict[str, Any]],
+            title: str,
+            channel: str,
+            output_filename: Optional[str] = None
+        ) -> str:
+        """
+        製品リストからショート動画を作成（BGM追加機能対応、アニメーション機能追加）
+        
+        Args:
+            products: 製品情報リスト
+            title: 動画タイトル
+            channel: チャンネル名
+            output_filename: 出力ファイル名
+        
+        Returns:
+            str: 作成した動画のパス
+        """
+        logger.info(f"動画作成開始: {title}")
+        
+        # 出力ファイル名が指定されていない場合は生成
+        if not output_filename:
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            safe_title = ''.join(c if c.isalnum() else '_' for c in title)
+            output_filename = f"{safe_title}_{timestamp}.mp4"
+        
+        output_path = os.path.join(self.output_dir, output_filename)
+        
+        # 製品リストをシャッフルして順位を割り当て
+        shuffled_products = random.sample(products, len(products))
+        shuffled_products = shuffled_products[:7]
+        for i, product in enumerate(shuffled_products):
+            product['new_rank'] = i + 1  # 1位から順に割り当て
+        
+        try:
+            # 一時ディレクトリを作成
+            with tempfile.TemporaryDirectory() as temp_dir:
+                # 動画セグメントのパスリスト
+                video_segments = []
+                
+                # イントロスライド作成
+                intro_title = None
+                for product in shuffled_products:
+                    if 'channel' in product and 'genre' in product:
+                        intro_title = f"{product['channel']}で買える{product['genre']}7選！"
+                        break
+                
+                if not intro_title:
+                    # main.pyからタイトルを構築
+                    channel_intro = title.split('で買える')[0] if 'で買える' in title else ""
+                    genre = title.split('で買える')[-1].replace('ランキング', '').strip() if 'で買える' in title else ""
+                    intro_title = f"{channel_intro}で買える{genre}7選！"
+
+                intro_img = self._create_improved_intro_slide(channel)
+                intro_slide_path = os.path.join(temp_dir, "intro_slide.png")
+                intro_img.save(intro_slide_path)
+                
+                # イントロ音声生成
+                intro_audio_path = os.path.join(temp_dir, "intro_audio.wav")
+                intro_success = generate_narration(intro_title, intro_audio_path, "random")
+                
+                # イントロ動画セグメント作成
+                intro_video_path = os.path.join(temp_dir, "intro_video.mp4")
+                
+                # ナレーション音声があれば使用、なければ3秒間の無音
+                if os.path.exists(intro_audio_path) and os.path.getsize(intro_audio_path) > 100:
+                    audio_duration = get_audio_duration(intro_audio_path)
+                    display_duration = max(audio_duration + 1.0, 3.0)  # 少し余裕を持たせる
+                else:
+                    logger.warning(f"イントロの音声ファイルが存在しないか無効です。無音を使用します。")
+                    display_duration = 3.0
+                    intro_audio_path = os.path.join(temp_dir, "silent_intro.wav")
+                    create_silent_audio(intro_audio_path, display_duration)
+                
+                # イントロスライドを動画に変換
+                cmd = [
+                    "ffmpeg", "-y",
+                    "-loop", "1",
+                    "-i", intro_slide_path,
+                    "-i", intro_audio_path,
+                    "-c:v", "libx264",
+                    "-tune", "stillimage",
+                    "-c:a", "aac",
+                    "-b:a", "192k",
+                    "-pix_fmt", "yuv420p",
+                    "-shortest"
+                ]
+                
+                cmd.append(intro_video_path)
+                try:
+                    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, text=True)
+                    video_segments.append(intro_video_path)
+                except subprocess.CalledProcessError as e:
+                    logger.error(f"イントロ動画生成エラー: {e.stderr}")
+                    
+                # 各製品ごとに動画セグメントを作成
+                for product in shuffled_products:
+                    rank = product['new_rank']
+                    product_name = product['name']
+                    brand_name = product['brand']
+                    reviews = product.get('reviews', [])
+                    
+                    # 製品名・ブランド名だけのナレーション用テキスト
+                    product_intro_text = f"{rank}位、{brand_name}の{product_name}"
+                    
+                    # 製品紹介ナレーション音声を生成
+                    product_audio_path = os.path.join(temp_dir, f"product_{rank}_audio.wav")
+                    success = generate_narration(product_intro_text, product_audio_path, "random")
+                    
+                    # ナレーション音声があれば使用、なければ3秒間の無音
+                    if os.path.exists(product_audio_path) and os.path.getsize(product_audio_path) > 100:
+                        audio_duration = get_audio_duration(product_audio_path)
+                        display_duration = max(audio_duration + 0.5, 3.0)  # 少し余裕を持たせる
+                    else:
+                        logger.warning(f"製品 {rank} の音声ファイルが存在しないか無効です。無音を使用します。")
+                        display_duration = 3.0
+                        product_audio_path = os.path.join(temp_dir, f"silent_{rank}.wav")
+                        create_silent_audio(product_audio_path, display_duration)
+                    
+                    # アニメーション付き商品紹介動画を作成
+                    product_video_path = os.path.join(temp_dir, f"product_{rank}_video.mp4")
+                    
+                    # アニメーション付き動画作成
+                    animation_success = self._create_product_animation(
+                        product, 
+                        rank, 
+                        os.path.join(temp_dir, f"product_{rank}_animation.mp4"), 
+                        show_name=True,
+                        animation_duration=0.1  # 0.1秒のアニメーション
+                    )
+
+                    if animation_success:
+                        # アニメーション動画と音声を結合
+                        cmd = [
+                            "ffmpeg", "-y",
+                            "-i", os.path.join(temp_dir, f"product_{rank}_animation.mp4"),
+                            "-i", product_audio_path,
+                            "-c:v", "libx264",
+                            "-c:a", "aac",
+                            "-b:a", "192k",
+                            "-pix_fmt", "yuv420p",
+                            "-shortest",
+                            product_video_path
+                        ]
+                        
+                        try:
+                            result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, text=True)
+                            logger.info(f"製品 {rank} のアニメーション動画生成成功")
+                        except subprocess.CalledProcessError as e:
+                            logger.error(f"製品 {rank} のアニメーション動画生成エラー: {e.stderr}")
+                            
+                            # アニメーション失敗時のフォールバック: 通常の静止画動画を作成
+                            logger.warning(f"製品 {rank} の通常の静止画動画を作成します")
+                            
+                            # 1. 製品画像と商品名のみを表示したスライド生成
+                            product_slide = self._create_product_slide(product, rank, show_name=True)
+                            product_slide_path = os.path.join(temp_dir, f"product_{rank}_slide.png")
+                            product_slide.save(product_slide_path)
+                            
+                            # 製品スライドを動画に変換
+                            cmd = [
+                                "ffmpeg", "-y",
+                                "-i", os.path.join(temp_dir, f"product_{rank}_animation.mp4"),
+                                "-i", product_audio_path,
+                                "-filter_complex",
+                                "[0:v]setpts=PTS-STARTPTS[v];[1:a]asetpts=PTS-STARTPTS[a]",
+                                "-map", "[v]",
+                                "-map", "[a]",
+                                "-c:v", "libx264",
+                                "-c:a", "aac",
+                                "-b:a", "192k",
+                                "-pix_fmt", "yuv420p",
+                                product_video_path
+                            ]
+                            
+                            try:
+                                result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, text=True)
+                            except subprocess.CalledProcessError as e:
+                                logger.error(f"製品 {rank} の動画生成エラー: {e.stderr}")
+                                raise
+                    else:
+                        # アニメーション作成失敗時は通常の静止画動画を作成
+                        logger.warning(f"製品 {rank} のアニメーション作成に失敗。通常の静止画動画を作成します")
+                        
+                        # 1. 製品画像と商品名のみを表示したスライド生成
+                        product_slide = self._create_product_slide(product, rank, show_name=True)
+                        product_slide_path = os.path.join(temp_dir, f"product_{rank}_slide.png")
+                        product_slide.save(product_slide_path)
+                        
+                        # 製品スライドを動画に変換
+                        cmd = [
+                            "ffmpeg", "-y",
+                            "-loop", "1",
+                            "-i", product_slide_path,
+                            "-i", product_audio_path,
+                            "-c:v", "libx264",
+                            "-tune", "stillimage",
+                            "-c:a", "aac",
+                            "-b:a", "192k",
+                            "-pix_fmt", "yuv420p",
+                            "-shortest",
+                            product_video_path
+                        ]
+                        
+                        try:
+                            result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, text=True)
+                        except subprocess.CalledProcessError as e:
+                            logger.error(f"製品 {rank} の動画生成エラー: {e.stderr}")
+                            raise
+                    
+                    video_segments.append(product_video_path)
+                    
+                    # コメントを順番に追加していく
+                    if reviews:
+                        # コメント用のベースとなるスライド（商品名とブランド名を削除済み）を作成
+                        base_slide = self._create_product_slide(product, rank, show_name=False)
+                        draw = ImageDraw.Draw(base_slide)
+                        
+                        # ベーススライドを保存
+                        base_slide_path = os.path.join(temp_dir, f"product_{rank}_base_slide.png")
+                        base_slide.save(base_slide_path)
+                        
+                        # 表示済みコメントを保持するスライド
+                        accumulated_slide = base_slide.copy()
+                        
+                        # コメント位置を定義
+                        positions = ["top", "middle", "bottom"]
+                        
+                        # コメントを順番に表示・読み上げる
+                        for i, review in enumerate(reviews[:3]):
+                            if not review:
+                                continue
+                            comment_text = str(review) 
+                            # コメント位置
+                            comment_position = positions[i % len(positions)]
+                            
+                            # コメントを累積スライドに追加
+                            comment_font = self.get_font(
+                                self.REVIEW_FONT_SIZE + 15,
+                                font_path=self.YASASHISA_GOTHIC if os.path.exists(self.YASASHISA_GOTHIC) else self.noto_sans_jp_path
+                            )
+                            draw = ImageDraw.Draw(accumulated_slide)
+
+                            # テキスト幅を調整して折り返し
+                            max_text_width = int(self.VIDEO_WIDTH * 0.78)
+                            words = list(comment_text)
+                            lines, current = [], ""
+                            for ch in words:
+                                if self.calculate_text_width(current + ch, comment_font, draw) <= max_text_width:
+                                    current += ch
+                                else:
+                                    lines.append(current)
+                                    current = ch
+                            if current:
+                                lines.append(current)
+
+                            # バルーンサイズ計算
+                            line_h = int((self.REVIEW_FONT_SIZE + 15) * 1.4)
+                            text_h = line_h * len(lines)
+                            text_w = max(self.calculate_text_width(l, comment_font, draw) for l in lines)
+                            pad_x, pad_y = 40, 30
+                            box_w = text_w + pad_x * 2
+                            box_h = text_h + pad_y * 2
+
+                            # 位置決定
+                            center_x = self.VIDEO_WIDTH // 2
+                            if comment_position == "top":
+                                box_y = int(self.VIDEO_HEIGHT * 0.25)
+                            elif comment_position == "middle":
+                                box_y = int(self.VIDEO_HEIGHT * 0.5) - box_h // 2
+                            else:  # bottom
+                                box_y = int(self.VIDEO_HEIGHT * 0.75) - box_h
+
+                            box_x = center_x - box_w // 2
+
+                            # バルーン（角丸長方形）を描画
+                            border_col = self.COMMENT_COLORS[i % 3]
+                            rect = [
+                                (box_x, box_y),
+                                (box_x + box_w, box_y + box_h)
+                            ]
+                            # Pillow ≥ 9.2 なら rounded_rectangle が使える
+                            draw.rounded_rectangle(
+                                rect,
+                                radius=self.COMMENT_CORNER_RADIUS,
+                                fill=(255, 255, 255),
+                                outline=border_col,
+                                width=self.COMMENT_BORDER_PX
+                            )
+
+                            # テキスト描画
+                            for idx, line in enumerate(lines):
+                                tx = center_x - self.calculate_text_width(line, comment_font, draw) // 2
+                                ty = box_y + pad_y + idx * line_h
+                                draw.text((tx, ty), line, font=comment_font, fill=(0, 0, 0))
+                            
+                            # 現在の累積スライドを保存（コメント追加後）
+                            comment_slide_path = os.path.join(temp_dir, f"product_{rank}_comment_{i+1}.png")
+                            accumulated_slide.save(comment_slide_path)
+                            
+                            # コメント用の音声を生成
+                            comment_audio_path = os.path.join(temp_dir, f"product_{rank}_comment_{i+1}_audio.wav")
+                            comment_success = generate_narration(review, comment_audio_path, "random")
+                            
+                            # コメントの音声が存在するか確認
+                            if not os.path.exists(comment_audio_path) or os.path.getsize(comment_audio_path) < 100:
+                                logger.warning(f"製品 {rank} のコメント {i+1} の音声ファイルが存在しないか無効です。無音を使用します。")
+                                comment_audio_path = os.path.join(temp_dir, f"silent_comment_{rank}_{i+1}.wav")
+                                create_silent_audio(comment_audio_path, 3.0)
+                            
+                            # 個別のコメントスライドを動画に変換
+                            comment_video_path = os.path.join(temp_dir, f"product_{rank}_comment_{i+1}_video.mp4")
+                            
+                            cmd = [
+                                "ffmpeg", "-y",
+                                "-loop", "1",
+                                "-i", comment_slide_path,
+                                "-i", comment_audio_path,
+                                "-c:v", "libx264",
+                                "-tune", "stillimage",
+                                "-c:a", "aac",
+                                "-b:a", "192k",
+                                "-pix_fmt", "yuv420p",
+                                "-shortest"
+                            ]
+                            
+                            cmd.append(comment_video_path)
+                            
+                            try:
+                                result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, text=True)
+                            except subprocess.CalledProcessError as e:
+                                logger.error(f"製品 {rank} のコメント {i+1} の動画生成エラー: {e.stderr}")
+                                raise
+                            
+                            # 動画セグメントに追加
+                            video_segments.append(comment_video_path)
+                
+                # すべての動画セグメントを連結するファイル作成
+                concat_file = os.path.join(temp_dir, "concat.txt")
+                with open(concat_file, "w") as f:
+                    for segment in video_segments:
+                        f.write(f"file '{segment}'\n")
+                
+                # まずBGMなしで動画を連結
+                temp_video_path = os.path.join(temp_dir, "no_bgm_output.mp4")
+                concat_cmd = [
+                    "ffmpeg", "-y",
+                    "-f", "concat",
+                    "-safe", "0",
+                    "-i", concat_file,
+                    "-c", "copy",
+                    temp_video_path
+                ]
+                
+                try:
+                    result = subprocess.run(concat_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, text=True)
+                except subprocess.CalledProcessError as e:
+                    logger.error(f"最終動画の連結エラー: {e.stderr}")
+                    raise
+                
+                # 動画の長さを取得
+                video_duration = self._get_video_duration(temp_video_path)
+                if video_duration <= 0:
+                    logger.warning("動画の長さが取得できませんでした。デフォルト値を使用します。")
+                    video_duration = 60.0
+                
+                # BGMを追加
+                bgm_path = os.path.join(self.bgm_dir, "しゅわしゅわハニーレモン.mp3")
+                if not os.path.exists(bgm_path):
+                    logger.warning(f"BGMファイルが見つかりません: {bgm_path}")
+                    logger.info("BGMなしで動画を出力します。")
+                    os.rename(temp_video_path, output_path)
+                else:
+                    # BGMを追加するコマンド
+                    bgm_cmd = [
+                        "ffmpeg", "-y",
+                        "-i", temp_video_path,  # 元の動画
+                        "-stream_loop", "-1",   # BGMをループ再生
+                        "-i", bgm_path,         # BGMファイル
+                        "-filter_complex",
+                        # BGMの音量を0.3に調整し、無限ループ
+                        f"[1:a]volume=0.3,aloop=loop=-1:size=2e+09[bgm];"
+                        # 元の音声とBGMをミックス
+                        "[0:a][bgm]amix=inputs=2:duration=first[aout]",
+                        "-map", "0:v",          # 元の動画の映像
+                        "-map", "[aout]",       # ミックスした音声
+                        "-c:v", "copy",
+                        "-c:a", "aac",
+                        "-shortest",            # 最短の入力に合わせる
+                        "-t", str(video_duration),  # 元の動画の長さを維持
+                        output_path
+                    ]
+                    
+                    try:
+                        result = subprocess.run(bgm_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, text=True)
+                        logger.info(f"BGM付き動画を作成しました: {output_path}")
+                    except subprocess.CalledProcessError as e:
+                        logger.error(f"BGM追加中にエラー: {e.stderr}")
+                        # エラーが発生した場合は元の動画を使用
+                        os.rename(temp_video_path, output_path)
+                        logger.info(f"BGMなしで動画を出力しました: {output_path}")
+                
+                # 一時ファイルの削除
+                if os.path.exists(temp_video_path) and os.path.exists(output_path):
+                    os.remove(temp_video_path)
+                
+                logger.info(f"動画作成完了: {output_path}")
+                return output_path
+                    
+        except Exception as e:
+            logger.error(f"動画作成エラー: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
+            raise
