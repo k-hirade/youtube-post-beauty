@@ -713,7 +713,12 @@ class VideoMaker:
             bevel=True,
             glow_radius=12, glow_opacity=0.4
         )
-        y += 150
+        if text_len >= 10:
+            y += 100
+        elif text_len >= 8:
+            y += 120
+        else: 
+            y += 150
 
         # ④ 神商品（少し大きめ）
         text = f"神{genre}"
@@ -733,8 +738,13 @@ class VideoMaker:
             bevel=True,
             glow_radius=12, glow_opacity=0.4
         )
-        y += 230
-
+        if text_len_shohin >= 10:
+            y += 180
+        elif text_len_shohin >= 6:
+            y += 200
+        else: 
+            y += 230
+            
         # ⑤ 挙げてくw
         w = self.calculate_text_width("挙げてくw", heavy80, ImageDraw.Draw(bg))
         self.draw_text_effect(
@@ -761,9 +771,9 @@ class VideoMaker:
             try:
                 deco = Image.open(path).convert("RGBA")
 
-                # 画像を大きすぎないサイズ（画面幅 25%・高さ 25% 以内）に収める
+                # 画像を大きすぎないサイズ（画面幅 25%・高さ 15% 以内）に収める
                 max_w = int(self.VIDEO_WIDTH * 0.4)
-                max_h = int(self.VIDEO_HEIGHT * 0.25)
+                max_h = int(self.VIDEO_HEIGHT * 0.15)
                 dw, dh = deco.size
                 scale = min(max_w / dw, max_h / dh, 1.0)
                 deco = deco.resize((int(dw*scale), int(dh*scale)), Image.LANCZOS)
