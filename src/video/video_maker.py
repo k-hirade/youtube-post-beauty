@@ -784,10 +784,8 @@ class VideoMaker:
             except Exception as e:
                 logger.error(f"装飾画像の読み込み/貼り付けに失敗: {path} - {e}")
 
-        # ------------------------------------------------------------------
-
         return bg.convert("RGB")
-
+        
     def create_video(
             self,
             products: List[Dict[str, Any]],
