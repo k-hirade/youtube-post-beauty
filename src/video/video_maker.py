@@ -466,8 +466,8 @@ class VideoMaker:
         
         # 小さい画像（180x180など）の場合は、そのまま使用して拡大する
         if img_width <= 400 and img_height <= 400:
-            # 画面の80%の幅に拡大
-            target_width = int(self.VIDEO_WIDTH * 0.75)
+            # 画面の70%の幅に拡大
+            target_width = int(self.VIDEO_WIDTH * 0.7)
             target_height = int(target_width * img_height / img_width)
             return img.resize((target_width, target_height), Image.LANCZOS)
         
@@ -1056,7 +1056,7 @@ class VideoMaker:
         テキストを適切な位置で折り返す（最大2行まで対応）
         """
         # 短いテキストはそのまま1行で返す
-        if len(text) <= 12:
+        if len(text) <= 11:
             return [text]
         
         # テキスト幅を計算
@@ -1072,7 +1072,7 @@ class VideoMaker:
         
         # 折り返しの基準となる文字と助詞
         break_chars = '、。，．,.!?！？ 　'
-        break_words = ['で', 'が', 'を', 'は', 'に', 'へ', 'と', 'や', 'の']
+        break_words = ['で', 'が', 'を', 'は', 'に', 'へ', 'と', 'や', 'の', 'から']
         
         # 文字列の半分あたりから適切な区切り位置を探す
         middle_pos = len(text) // 2
@@ -1168,6 +1168,7 @@ class VideoMaker:
                 
                 # イントロスライド作成
                 intro_title = None
+                channel_intro = title.split('で買える')[0] if 'で買える' in title else ""
                 for product in shuffled_products:
                     if 'channel' in product and 'genre' in product:
                         intro_title = f"一度はマジで使ってみてほしい{channel_intro}で買える神商品挙げてく。これはブックマーク必須やで"
@@ -1175,7 +1176,6 @@ class VideoMaker:
                 
                 if not intro_title:
                     # main.pyからタイトルを構築
-                    channel_intro = title.split('で買える')[0] if 'で買える' in title else ""
                     genre = title.split('で買える')[-1].replace('ランキング', '').strip() if 'で買える' in title else ""
                     intro_title = f"一度はマジで使ってみてほしい{channel_intro}で買える神商品挙げてく。これはブックマーク必須やで"
 
