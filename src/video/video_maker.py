@@ -882,7 +882,8 @@ class VideoMaker:
             bg, text, (x, y),
             heavy60,
             fill=(199, 22, 22),
-            inner_stroke_width=2, inner_stroke_fill=(158, 0, 0),
+            stroke_width=2, stroke_fill=(255, 226, 82),
+            # inner_stroke_width=1, inner_stroke_fill=(158, 0, 0),
             glow_radius=20, glow_opacity=0.7
         )
         
@@ -1175,58 +1176,6 @@ class VideoMaker:
             import traceback
             logger.error(traceback.format_exc())
             return False
-        
-    def _prepare_product_intro_text(self, rank, brand_name, product_name):
-        """
-        商品紹介用のテキストを生成（ブランド名が商品名に含まれる場合の冗長さを回避）
-        
-        Args:
-            rank: 順位
-            brand_name: ブランド名
-            product_name: 商品名
-        
-        Returns:
-            str: フォーマットされた紹介テキスト
-        """
-        # ブランド名がすでに商品名に含まれているかチェック
-        if product_name.startswith(f"{brand_name} ") or product_name.startswith(brand_name):
-            return f"{rank}位、{product_name}"
-        
-        if f" {brand_name} " in product_name:
-            return f"{rank}位、{product_name}"
-        
-        if product_name.endswith(f" {brand_name}") or product_name.endswith(brand_name):
-            return f"{rank}位、{product_name}"
-        
-        if brand_name.lower() in product_name.lower():
-            # スペースをチェックして、別の単語の一部でないことを確認
-            product_lower = product_name.lower()
-            brand_lower = brand_name.lower()
-            
-            # 商品名内のブランド名の全出現箇所を検索
-            start_idx = 0
-            is_standalone = False
-            
-            while True:
-                idx = product_lower.find(brand_lower, start_idx)
-                if idx == -1:
-                    break
-                    
-                # ブランド名が独立した単語かチェック
-                before_ok = idx == 0 or not product_lower[idx-1].isalnum()
-                after_ok = idx + len(brand_lower) == len(product_lower) or not product_lower[idx + len(brand_lower)].isalnum()
-                
-                if before_ok and after_ok:
-                    is_standalone = True
-                    break
-                    
-                start_idx = idx + 1
-                
-            if is_standalone:
-                return f"{rank}位、{product_name}"
-        
-        # デフォルト: ブランド名が商品名に含まれていない場合
-        return f"{rank}位、{brand_name}の{product_name}"
 
     def wrap_text(self, text, font, draw, max_width):
         """
@@ -1300,6 +1249,34 @@ class VideoMaker:
         except Exception as e:
             logger.error(f"動画長さ取得例外: {e}")
             return 0
+        
+    def _prepare_product_name_for_narration(self, product_name, brand_name):
+        """
+        ナレーション用に商品名からブランド名と重複している部分を除去する
+        表示用の _prepare_product_name と同様のロジックで処理
+        """
+        if not product_name or not brand_name:
+            return product_name
+            
+        # スペース正規化
+        product_name = re.sub(r"\s+", " ", product_name.replace("　", " ")).strip()
+        
+        # ブランド名を削除（大文字小文字を区別しない）
+        if f" {brand_name} " in product_name:
+            product_name = product_name.replace(f" {brand_name} ", " ")
+        elif product_name.startswith(f"{brand_name} "):
+            product_name = product_name[len(brand_name)+1:]
+        elif product_name.endswith(f" {brand_name}"):
+            product_name = product_name[:-len(brand_name)-1]
+        elif product_name == brand_name:
+            return "商品"
+        product_name = product_name.replace(brand_name, "")
+        
+        product_name = re.sub(r"\s+", " ", product_name).strip()
+        if not product_name:
+            return "商品"
+            
+        return product_name
 
     def create_video(
             self,
@@ -1541,7 +1518,8 @@ class VideoMaker:
                     reviews = product.get('reviews', [])
                     
                     # 製品名・ブランド名だけのナレーション用テキスト
-                    product_intro_text = f"{rank}位、{brand_name}の{product_name}"
+                    product_name_for_narration = self._prepare_product_name_for_narration(product.get('name'), brand_name)
+                    product_intro_text = f"{rank}位、{brand_name}の{product_name_for_narration}"
                     
                     # 製品紹介ナレーション音声を生成
                     product_audio_path = os.path.join(temp_dir, f"product_{rank}_audio.wav")
