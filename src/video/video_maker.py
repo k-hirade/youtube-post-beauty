@@ -117,7 +117,6 @@ class VideoMaker:
     ) -> None:
         """ draw_text_effect → X 方向シアーで疑似イタリック """
 
-
         xmin, ymin, xmax, ymax = font.getbbox(text)
         w = xmax - xmin
         h = ymax - ymin
@@ -256,13 +255,14 @@ class VideoMaker:
 
         base.alpha_composite(txt_layer)
 
-    def _prepare_product_name(self, raw: str) -> list[str]:
+    def _prepare_product_name(self, raw: str, brand_name: str = "") -> list[str]:
         """
         1) () または <> （半角／全角）で囲まれた部分を丸ごと削除  
         2) 全角スペース→半角スペースに揃え、連続スペースを 1 個に  
-        3) 半角スペースでいったんトークン分割  
-        4) トークンを左から詰め、**8 文字**を超えない範囲で行を生成  
-        5) 先頭 2 行を返す（行が足りなければそのまま）
+        3) ブランド名が含まれている場合、それを削除
+        4) 半角スペースでいったんトークン分割  
+        5) トークンを左から詰め、**8 文字**を超えない範囲で行を生成  
+        6) 先頭 2 行を返す（行が足りなければそのまま）
         """
         if not raw:
             return ["No Name"]
@@ -274,11 +274,33 @@ class VideoMaker:
         raw = re.sub(r"\s+", " ", raw.replace("　", " ")).strip()
         if not raw:
             return ["No Name"]
+        
+        # ③ ブランド名を削除（大文字小文字を区別しない）
+        if brand_name:
+            # 半角スペースが前後にある場合のブランド名
+            if f" {brand_name} " in raw:
+                raw = raw.replace(f" {brand_name} ", " ")
+            # 文字列の先頭にあるブランド名
+            elif raw.startswith(f"{brand_name} "):
+                raw = raw[len(brand_name)+1:]
+            # 文字列の末尾にあるブランド名
+            elif raw.endswith(f" {brand_name}"):
+                raw = raw[:-len(brand_name)-1]
+            # 単独でブランド名と一致する場合
+            elif raw == brand_name:
+                return ["No Name"]
+            # スペースなしでも出現する可能性があるため
+            raw = raw.replace(brand_name, "")
+            
+        # 最終的な正規化（二重スペースなどの修正）
+        raw = re.sub(r"\s+", " ", raw).strip()
+        if not raw:
+            return ["No Name"]
 
-        # ③ 半角スペースでトークン化
+        # ④ 半角スペースでトークン化
         tokens = raw.split(" ")
 
-        # ④ 8 文字以内で行を組み立て
+        # ⑤ 8 文字以内で行を組み立て
         lines, current = [], ""
         for tok in tokens:
             if len(current + tok) <= 8:
@@ -602,12 +624,12 @@ class VideoMaker:
         )
         
         # ブランド名の取得と準備
-        name_lines = self._prepare_product_name(product.get("name", "No Name"))
+        name_lines = self._prepare_product_name(product.get("name"), brand_name)
         # 表示位置の調整 - ブランド名を追加したので開始位置を上にシフト
         start_y = 350 - (len(name_lines)-1)*40  # 以前は400
         # ブランド名のためのフォントサイズと空間
-        brand_font_size = self.BRAND_FONT_SIZE + 30  # 少し大きくしておく
-        brand_space = 40
+        brand_font_size = self.BRAND_FONT_SIZE + 100  # 少し大きくしておく
+        brand_space = 20
         # ブランド名のフォント
         brand_font = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY, brand_font_size)
         # ブランド名を表示
@@ -618,11 +640,13 @@ class VideoMaker:
             self.draw_text_effect(
                 img, brand_name, (x_brand, start_y), brand_font,
                 fill=(0x66, 0x1A, 0x1A),  # 濃い赤色
-                stroke_width=6, stroke_fill=(0, 0, 0),
-                glow_radius=8, glow_opacity=0.35
+                gradient=[(0xD7, 0x55, 0x4F), (0x82, 0x16, 0x16)], 
+                inner_stroke_width=4,  inner_stroke_fill=(255, 255, 255),
+                stroke_width=10, stroke_fill=(0, 0, 0),
+                glow_radius=15, glow_opacity=0.50
             )
             logging.info("ブランド名を挿入")
-        empty_height = 80
+        empty_height = 10
         # 位置調整（ブランド名の下に配置）
         if show_name and brand_name:
             current_y = start_y + brand_font_size + brand_space
@@ -668,7 +692,7 @@ class VideoMaker:
             aspect_ratio = img_width / img_height if img_height > 0 else 1
             
             # 幅を画面の80%に設定（常に）
-            new_width = int(self.VIDEO_WIDTH * 0.8)
+            new_width = int(self.VIDEO_WIDTH * 0.7)
             new_height = int(new_width / aspect_ratio)
             
             # ログ出力
@@ -679,7 +703,7 @@ class VideoMaker:
             
             # 画像をブランド名と商品名の下に配置
             img_x = (self.VIDEO_WIDTH - new_width) // 2
-            img_y = name_block_bottom + 250
+            img_y = name_block_bottom + 100
             
             # 画像貼り付け
             img.paste(product_img, (img_x, img_y))
@@ -937,31 +961,23 @@ class VideoMaker:
                     logger.error(f"画像ダウンロードエラー: {str(e)}")
                     img_loaded = False
 
-            # 商品名の準備
-            name_lines = self._prepare_product_name(product.get("name", "No Name"))
-            
             # ブランド名の取得と準備
             brand_name = product.get("brand", "")
-            # 表示位置の調整 - ブランド名を追加したので開始位置を上にシフト
-            start_y = 350 - (len(name_lines)-1)*40  # 以前は400
-            # ブランド名のためのフォントサイズ
-            brand_font_size = self.BRAND_FONT_SIZE + 30  # 少し大きくしておく
-            # スペース計算 - ブランド名と商品名の間
-            brand_space = 40
-            # 名前ブロックの下端計算（ブランド名を含む）
-            empty_height = 80
+            # 商品名の準備
+            name_lines = self._prepare_product_name(product.get("name"), brand_name)
+            start_y = 350 - (len(name_lines)-1)*40
+            brand_font_size = self.BRAND_FONT_SIZE + 100
+            brand_space = 20
+            empty_height = 20
             name_block_bottom = self._calc_name_block_bottom(start_y + brand_font_size + brand_space, name_lines)
             
             # 画像サイズ設定
             if img_loaded:
                 img_width, img_height = product_img.size
                 logger.info(f"元の画像サイズ: {img_width}x{img_height}")
-                
-                # 縦横比の計算
                 aspect_ratio = img_width / img_height if img_height > 0 else 1
                 
-                # 幅を画面の80%に設定
-                new_width = int(self.VIDEO_WIDTH * 0.8)
+                new_width = int(self.VIDEO_WIDTH * 0.7)
                 new_height = int(new_width / aspect_ratio)
                 
                 logger.info(f"リサイズ後の画像サイズ: {new_width}x{new_height}")
@@ -971,12 +987,12 @@ class VideoMaker:
                 
                 # 画像の最終位置（アニメーション後）
                 img_x = (self.VIDEO_WIDTH - new_width) // 2
-                img_y = name_block_bottom + 250
+                img_y = name_block_bottom + 100
             else:
-                new_width = int(self.VIDEO_WIDTH * 0.8)
+                new_width = int(self.VIDEO_WIDTH * 0.7)
                 new_height = int(new_width)
                 img_x = (self.VIDEO_WIDTH - new_width) // 2
-                img_y = name_block_bottom + 250
+                img_y = name_block_bottom + 100
 
             # ランク表示用のフォント
             rank_font = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY, int(self.TITLE_FONT_SIZE * 2.0))
@@ -1032,8 +1048,10 @@ class VideoMaker:
                         self.draw_text_effect(
                             frame_img, brand_name, (x_brand, current_brand_y), brand_font,
                             fill=(0x66, 0x1A, 0x1A),  # 濃い赤色
-                            stroke_width=6, stroke_fill=(0, 0, 0),
-                            glow_radius=8, glow_opacity=0.35
+                            gradient=[(0xD7, 0x55, 0x4F), (0x82, 0x16, 0x16)], 
+                            inner_stroke_width=4,  inner_stroke_fill=(255, 255, 255),
+                            stroke_width=10, stroke_fill=(0, 0, 0),
+                            glow_radius=15, glow_opacity=0.50
                         )
                         
                         # 商品名のアニメーション（上から下へ）
@@ -1635,19 +1653,19 @@ class VideoMaker:
                             )
                             draw = ImageDraw.Draw(accumulated_slide)
 
-                            # テキスト幅を調整して折り返し (修正部分)
+                            # テキスト幅を調整して折り返し
                             max_text_width = int(self.VIDEO_WIDTH * 0.7)  # コメント内テキスト幅（ボックス幅の少し小さめ）
                             # テキストを折り返す
                             lines = self.wrap_text(comment_text, comment_font, draw, max_text_width)
 
-                            # バルーンサイズ計算 (修正部分)
+                            # バルーンサイズ計算
                             line_h = int((self.REVIEW_FONT_SIZE + 15) * 1.4)
                             text_h = line_h * len(lines)
                             text_w = max(self.calculate_text_width(l, comment_font, draw) for l in lines)
                             pad_x, pad_y = 40, 30
                             
-                            # ボックス幅を画面幅の80%に固定 (修正部分)
-                            box_w = int(self.VIDEO_WIDTH * 0.8)
+                            # ボックス幅を画面幅の80%に固定
+                            box_w = int(self.VIDEO_WIDTH * 0.85)
                             box_h = text_h + pad_y * 2
 
                             # 位置決定
@@ -1676,7 +1694,7 @@ class VideoMaker:
                                 width=self.COMMENT_BORDER_PX
                             )
 
-                            # テキスト描画 (修正部分)
+                            # テキスト描画
                             for idx, line in enumerate(lines):
                                 tx = center_x - self.calculate_text_width(line, comment_font, draw) // 2
                                 ty = box_y + pad_y + idx * line_h
