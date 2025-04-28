@@ -168,6 +168,16 @@ def run_pipeline(args):
         for product in selected_products:
             logger.info(f"レビュー生成: {product['name']}")
             reviews = review_generator.generate_reviews(product)
+            
+            # コメントデータのバリデーション
+            if reviews and len(reviews) > 0:
+                logger.info(f"有効な口コミ {len(reviews)}件を取得:")
+                for i, review in enumerate(reviews):
+                    logger.info(f"  {i+1}. {review}")
+            else:
+                logger.warning(f"製品 {product['name']} の口コミが取得できませんでした")
+                reviews = []  # 空リストを確実に設定
+            
             product["reviews"] = reviews
             
             # レビューをキャッシュに保存

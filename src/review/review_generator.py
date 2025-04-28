@@ -8,6 +8,7 @@ import time
 import logging
 import random
 import requests
+import re
 from typing import Dict, List, Optional, Any
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
@@ -104,14 +105,16 @@ class ReviewGenerator:
         
         {reviews_text}
 
-        ＊重要 出力は3行でそれぞれのコメントを30文字以内で書いてください。また、3つのコメントのそれぞれには、1-3の数字を振ってください。
+        ＊重要 出力は3行でそれぞれのコメントを25文字以内で書いてください。また、3つのコメントのそれぞれには、1-3の数字を振って、1.-- 2.-- 3.--という形式で回答してください。
         
         各要点は女性が書いたように表現してください。以下のような特徴を取り入れてください：
-        1. 女性特有の表現
-        2. 感情表現が豊か
-        3. 肌の変化や使用感などの具体的な表現
-        4. 記号や絵文字は使用しないでください。
-        5.敬語とタメ口を織り交ぜてください
+        1.女性特有の表現
+        2.感情表現が豊か
+        3.肌の変化や使用感などの具体的な表現
+        4.記号や絵文字は使用してはいけない
+        5.敬語とタメ口を織り交ぜる
+        6.必ずポジティブな意見にする
+        7.使った後のコメントであることを意識する
 
         出力例
         1.冗談抜きで他の洗顔料より汚れ落ち実感できた
@@ -124,29 +127,47 @@ class ReviewGenerator:
         return f"""
         「{product['brand']}」の「{product['name']}」についての女性ユーザーが書いたような感想を3つ作成してください。
         ジャンル: {product['genre']}
-        ＊重要 出力は3行でそれぞれのコメントを30文字以内で書いてください。また、3つのコメントのそれぞれには、1-3の数字を振ってください。
+
+        ＊重要 出力は3行でそれぞれのコメントを25文字以内で書いてください。また、3つのコメントのそれぞれには、1-3の数字を振って、1.-- 2.-- 3.--という形式で回答してください。
         
         各要点は女性が書いたように表現してください。以下のような特徴を取り入れてください：
         1.女性特有の表現
         2.感情表現が豊か
         3.肌の変化や使用感などの具体的な表現
-        4.記号や絵文字は使用しないでください。
-        5.敬語とタメ口を織り交ぜてください
+        4.記号や絵文字は使用してはいけない
+        5.敬語とタメ口を織り交ぜる
+        6.必ずポジティブな意見にする
+        7.使った後のコメントであることを意識する
 
-                出力例
+        出力例
         1.冗談抜きで他の洗顔料より汚れ落ち実感できた
         2.鼻の頭のブツブツが目立たなくなって感謝
         3.粉なのに泡立ちがいいのが不思議です
         """
     
     def _parse_response(self, response_text: str) -> List[str]:
-        """APIレスポンスから要点を抽出"""
-        lines = [line.strip() for line in response_text.strip().split('\n')]
-        # 空行を除外
-        summaries = [line for line in lines if line]
         
-        # 最大3つまで取得
-        return summaries[:3]
+        lines = [line.strip() for line in response_text.strip().split('\n')]
+        cleaned_reviews = []
+        
+        # リストから空行を除外
+        lines = [line for line in lines if line]
+        
+        # 各行を処理
+        for line in lines:
+            # 数字のプレフィックスパターンを検出して削除
+            # マッチするパターン: "1.", "2. ", "3.　" など、数字+ドット+可能なスペース
+            processed = re.sub(r'^\d+\.[\s　]*', '', line.strip())
+            
+            processed = re.sub(r'[。\.]$', '', processed)
+            
+            processed = re.sub(r'\s+', ' ', processed).strip()
+            
+            if processed:  # 空でない場合のみ追加
+                cleaned_reviews.append(processed)
+        
+        # 最大3つまで返す
+        return cleaned_reviews[:3]
     
     def generate_reviews(self, product: Dict[str, Any]) -> List[str]:
         """
@@ -193,7 +214,7 @@ class ReviewGenerator:
                         valid_summaries.append(summary[:40])
                 
                 logger.info(f"レビュー生成成功: {valid_summaries}")
-                return valid_summaries[:3]  # 必ず3つだけ返す
+                return valid_summaries[:3]  # 最大3つだけ返す
                 
             except Exception as e:
                 logger.error(f"レビュー生成エラー (試行 {attempt+1}/{self.max_retries}): {str(e)}")
@@ -202,3 +223,7 @@ class ReviewGenerator:
                     # 次のリトライまで待機（エクスポネンシャルバックオフ）
                     sleep_time = self.retry_delay * (2 ** attempt)
                     time.sleep(sleep_time)
+                    
+        # すべてのリトライが失敗した場合は空のリストを返す
+        logger.error(f"レビュー生成の最大リトライ回数に達しました。空のリストを返します。")
+        return []

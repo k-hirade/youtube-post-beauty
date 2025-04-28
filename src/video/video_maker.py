@@ -1181,7 +1181,7 @@ class VideoMaker:
         テキストを適切な位置で折り返す（最大2行まで対応）
         """
         # 短いテキストはそのまま1行で返す
-        if len(text) <= 10:
+        if len(text) <= 12:
             return [text]
         
         # テキスト幅を計算
@@ -1664,8 +1664,8 @@ class VideoMaker:
                             text_w = max(self.calculate_text_width(l, comment_font, draw) for l in lines)
                             pad_x, pad_y = 40, 30
                             
-                            # ボックス幅を画面幅の80%に固定
-                            box_w = int(self.VIDEO_WIDTH * 0.85)
+                            # ボックス幅を画面幅の90%に固定
+                            box_w = int(self.VIDEO_WIDTH * 0.9)
                             box_h = text_h + pad_y * 2
 
                             # 位置決定
