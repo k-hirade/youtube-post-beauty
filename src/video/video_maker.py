@@ -168,10 +168,10 @@ class VideoMaker:
         - グローは blur
         - ベベルは上下 1px シフト描画
         """
-        if gradient:
-            logger.info(f"Applying gradient with colors: {gradient}")
-        else:
-            logger.info(f"Using solid fill: {fill}")
+        # if gradient:
+        #     logger.info(f"Applying gradient with colors: {gradient}")
+        # else:
+        #     logger.info(f"Using solid fill: {fill}")
         from PIL import ImageFilter, ImageChops
 
         txt_layer = Image.new("RGBA", base.size, (0, 0, 0, 0))
@@ -231,10 +231,10 @@ class VideoMaker:
             
             # 修正：グラデーションテキストをtxt_layerに合成
             txt_layer = Image.alpha_composite(txt_layer, gradient_text)
-            logging.info("gradientを適応しました")
+            # logging.info("gradientを適応しました")
         else:
             d.text(xy, text, font=font, fill=fill)
-            logging.warning("gradientが存在しません")
+            # logging.warning("gradientが存在しません")
 
         # ベベル＆エンボス：ハイライトとシャドウを 1px ずらして描画
         if bevel:
@@ -516,7 +516,8 @@ class VideoMaker:
         self,
         product: Dict[str, Any],
         rank: int,
-        show_name: bool = True
+        brand_name: str,
+        show_name: bool = True,
     ) -> Image.Image:
         """
         製品スライドの作成（画像と商品名のみ表示）
@@ -582,10 +583,10 @@ class VideoMaker:
             except Exception as e:
                 logger.error(f"画像ダウンロードエラー: {str(e)}")
                 img_loaded = False  
-      
+    
         # ランク
         rank_font = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY,
-                                       int(self.TITLE_FONT_SIZE * 2.0))   # 少し大きめ
+                                    int(self.TITLE_FONT_SIZE * 2.0))   # 少し大きめ
         rank_text = f"第{rank}位"
 
         w = self.calculate_text_width(rank_text, rank_font, draw)
@@ -600,14 +601,38 @@ class VideoMaker:
             glow_radius=8,  glow_opacity=0.35
         )
         
+        # ブランド名の取得と準備
         name_lines = self._prepare_product_name(product.get("name", "No Name"))
-        start_y    = 400 - (len(name_lines)-1)*40
-        name_block_bottom = self._calc_name_block_bottom(start_y, name_lines)
+        # 表示位置の調整 - ブランド名を追加したので開始位置を上にシフト
+        start_y = 350 - (len(name_lines)-1)*40  # 以前は400
+        # ブランド名のためのフォントサイズと空間
+        brand_font_size = self.BRAND_FONT_SIZE + 30  # 少し大きくしておく
+        brand_space = 40
+        # ブランド名のフォント
+        brand_font = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY, brand_font_size)
+        # ブランド名を表示
+        if show_name and brand_name:
+            w_brand = self.calculate_text_width(brand_name, brand_font, draw)
+            x_brand = (self.VIDEO_WIDTH - w_brand) // 2
+            # ブランド名テキストを描画
+            self.draw_text_effect(
+                img, brand_name, (x_brand, start_y), brand_font,
+                fill=(0x66, 0x1A, 0x1A),  # 濃い赤色
+                stroke_width=6, stroke_fill=(0, 0, 0),
+                glow_radius=8, glow_opacity=0.35
+            )
+            logging.info("ブランド名を挿入")
         empty_height = 80
+        # 位置調整（ブランド名の下に配置）
+        if show_name and brand_name:
+            current_y = start_y + brand_font_size + brand_space
+        else:
+            current_y = start_y + brand_font_size + brand_space
+        # 商品名ブロックの下端計算
+        name_block_bottom = self._calc_name_block_bottom(current_y, name_lines)
 
         # 商品名
         if show_name:
-            current_y = start_y 
             for line in name_lines:
                 text_len  = len(line.replace(" ", ""))
                 font_size = self._name_font_size(text_len)
@@ -619,7 +644,7 @@ class VideoMaker:
                 self.draw_text_effect(
                     img, line, (x, y), name_font,
                     fill=(0xB5, 0x2E, 0x2E),
-                    gradient=[(0x82, 0x16, 0x16), (0x82, 0x16, 0x16)], 
+                    gradient=[(0xD7, 0x55, 0x4F), (0x82, 0x16, 0x16)], 
                     inner_stroke_width=4,  inner_stroke_fill=(255, 255, 255),
                     stroke_width=10, stroke_fill=(0, 0, 0),
                     glow_radius=15, glow_opacity=0.50
@@ -628,7 +653,6 @@ class VideoMaker:
 
         else:
             # show_name=False の分岐はそのままで OK
-            current_y = start_y
             for line in name_lines:
                 text_len  = len(line.replace(" ", ""))
                 font_size = self._name_font_size(text_len)
@@ -653,7 +677,7 @@ class VideoMaker:
             # リサイズ
             product_img = product_img.resize((new_width, new_height), Image.LANCZOS)
             
-            # 画像をブランド名の下に配置
+            # 画像をブランド名と商品名の下に配置
             img_x = (self.VIDEO_WIDTH - new_width) // 2
             img_y = name_block_bottom + 250
             
@@ -915,9 +939,18 @@ class VideoMaker:
 
             # 商品名の準備
             name_lines = self._prepare_product_name(product.get("name", "No Name"))
-            start_y = 400 - (len(name_lines)-1)*40
-            name_block_bottom = self._calc_name_block_bottom(start_y, name_lines)
+            
+            # ブランド名の取得と準備
+            brand_name = product.get("brand", "")
+            # 表示位置の調整 - ブランド名を追加したので開始位置を上にシフト
+            start_y = 350 - (len(name_lines)-1)*40  # 以前は400
+            # ブランド名のためのフォントサイズ
+            brand_font_size = self.BRAND_FONT_SIZE + 30  # 少し大きくしておく
+            # スペース計算 - ブランド名と商品名の間
+            brand_space = 40
+            # 名前ブロックの下端計算（ブランド名を含む）
             empty_height = 80
+            name_block_bottom = self._calc_name_block_bottom(start_y + brand_font_size + brand_space, name_lines)
             
             # 画像サイズ設定
             if img_loaded:
@@ -948,6 +981,9 @@ class VideoMaker:
             # ランク表示用のフォント
             rank_font = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY, int(self.TITLE_FONT_SIZE * 2.0))
             rank_text = f"第{rank}位"
+            
+            # ブランド名用のフォント
+            brand_font = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY, brand_font_size)
             
             # アニメーションの一時ディレクトリ
             with tempfile.TemporaryDirectory() as animation_dir:
@@ -984,8 +1020,24 @@ class VideoMaker:
                             glow_radius=8, glow_opacity=0.35
                         )
                         
+                        # ブランド名のアニメーション（上から下へ）
+                        w_brand = self.calculate_text_width(brand_name, brand_font, draw)
+                        x_brand = (self.VIDEO_WIDTH - w_brand) // 2
+                        
+                        start_brand_y = -200
+                        end_brand_y = start_y
+                        current_brand_y = int(start_brand_y + (end_brand_y - start_brand_y) * progress)
+                        
+                        # ブランド名テキストを描画
+                        self.draw_text_effect(
+                            frame_img, brand_name, (x_brand, current_brand_y), brand_font,
+                            fill=(0x66, 0x1A, 0x1A),  # 濃い赤色
+                            stroke_width=6, stroke_fill=(0, 0, 0),
+                            glow_radius=8, glow_opacity=0.35
+                        )
+                        
                         # 商品名のアニメーション（上から下へ）
-                        current_y = start_y
+                        current_y = start_y + brand_font_size + brand_space  # ブランド名の下に配置
                         for line in name_lines:
                             text_len = len(line.replace(" ", ""))
                             font_size = self._name_font_size(text_len)
@@ -1003,7 +1055,7 @@ class VideoMaker:
                             self.draw_text_effect(
                                 frame_img, line, (x, current_name_y), name_font,
                                 fill=(0xB5, 0x2E, 0x2E),
-                                gradient=[(0x82, 0x16, 0x16), (0x82, 0x16, 0x16)],
+                                gradient=[(0xD7, 0x55, 0x4F), (0x82, 0x16, 0x16)],
                                 inner_stroke_width=4, inner_stroke_fill=(255, 255, 255),
                                 stroke_width=10, stroke_fill=(0, 0, 0),
                                 glow_radius=15, glow_opacity=0.50
@@ -1111,7 +1163,7 @@ class VideoMaker:
         テキストを適切な位置で折り返す（最大2行まで対応）
         """
         # 短いテキストはそのまま1行で返す
-        if len(text) <= 11:
+        if len(text) <= 10:
             return [text]
         
         # テキスト幅を計算
@@ -1131,7 +1183,7 @@ class VideoMaker:
         
         # 文字列の半分あたりから適切な区切り位置を探す
         middle_pos = len(text) // 2
-        search_range = 4  # 検索範囲
+        search_range = 2  # 検索範囲
         best_position = middle_pos  # デフォルト位置
         
         # 適切な区切り位置を前後に探索
@@ -1496,7 +1548,7 @@ class VideoMaker:
                             logger.warning(f"製品 {rank} の通常の静止画動画を作成します")
                             
                             # 1. 製品画像と商品名のみを表示したスライド生成
-                            product_slide = self._create_product_slide(product, rank, show_name=True)
+                            product_slide = self._create_product_slide(product, rank, brand_name=product['brand'], show_name=True)
                             product_slide_path = os.path.join(temp_dir, f"product_{rank}_slide.png")
                             product_slide.save(product_slide_path)
                             
@@ -1526,7 +1578,7 @@ class VideoMaker:
                         logger.warning(f"製品 {rank} のアニメーション作成に失敗。通常の静止画動画を作成します")
                         
                         # 1. 製品画像と商品名のみを表示したスライド生成
-                        product_slide = self._create_product_slide(product, rank, show_name=True)
+                        product_slide = self._create_product_slide(product, rank, brand_name=product['brand'], show_name=True)
                         product_slide_path = os.path.join(temp_dir, f"product_{rank}_slide.png")
                         product_slide.save(product_slide_path)
                         
@@ -1555,7 +1607,7 @@ class VideoMaker:
                     
                     # コメントを順番に追加していく
                     if reviews:
-                        base_slide = self._create_product_slide(product, rank, show_name=False)
+                        base_slide = self._create_product_slide(product, rank, brand_name=product['brand'], show_name=False)
                         draw = ImageDraw.Draw(base_slide)
                         
                         # ベーススライドを保存
