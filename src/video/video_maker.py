@@ -162,12 +162,16 @@ class VideoMaker:
         bevel: bool = False
     ) -> None:
         """
-        1 回の呼び出しで “二重ストローク＋グラデ＋グロー” までまとめて描画
+        1 回の呼び出しで "二重ストローク＋グラデ＋グロー" までまとめて描画
         Pillow だけで完結させるために
         - グラデはマスク描画
         - グローは blur
         - ベベルは上下 1px シフト描画
         """
+        if gradient:
+            logger.info(f"Applying gradient with colors: {gradient}")
+        else:
+            logger.info(f"Using solid fill: {fill}")
         from PIL import ImageFilter, ImageChops
 
         txt_layer = Image.new("RGBA", base.size, (0, 0, 0, 0))
@@ -192,27 +196,47 @@ class VideoMaker:
 
         # 本体塗り（グラデ or 単色）
         if gradient:
-            top, *mid, bottom = gradient
-            grad = Image.new("RGB", (1, font.size), color=0)
-            for y in range(grad.height):
-                ratio = y / (grad.height - 1)
-                # 線形補間（中間色がある場合も雑に線形補間）
-                if len(gradient) == 2:
-                    c1, c2 = top, bottom
-                else:
-                    # 3 色の場合
-                    c1, c2 = (top, bottom) if ratio > .5 else (top, mid[0])
-                    ratio = ratio*2 if ratio <= .5 else (ratio-.5)*2
-                grad.putpixel((0, y), tuple(int(c1[i] + (c2[i]-c1[i])*ratio) for i in range(3)))
-            grad = grad.resize((base.width, base.height))
+            # テキストマスクを作成
             mask = Image.new("L", base.size, 0)
             mdraw = ImageDraw.Draw(mask)
             mdraw.text(xy, text, font=font, fill=255)
-            txt_layer = Image.composite(grad, txt_layer, mask)
+            
+            # グラデーションのための修正：RGBモードの画像を準備
+            top, *mid, bottom = gradient
+            grad = Image.new("RGB", (base.width, base.height), color=0)
+            
+            # 垂直グラデーションを描画
+            for y in range(grad.height):
+                ratio = y / (grad.height - 1) if grad.height > 1 else 0
+                c1, c2 = top, bottom
+                color = tuple(int(c1[i] + (c2[i]-c1[i])*ratio) for i in range(3))
+                ImageDraw.Draw(grad).line((0, y, grad.width, y), fill=color)
+            
+            # グラデーションをRGBAに変換
+            grad_rgba = grad.convert("RGBA")
+            
+            # マスクを使用してグラデーションテキストを作成 - 修正ポイント
+            gradient_text = Image.new("RGBA", base.size, (0, 0, 0, 0))
+            
+            # 修正：ImageChops.multiplyを使用して、マスクとグラデーションを正しく組み合わせる
+            mask_rgba = Image.new("RGBA", base.size, (0, 0, 0, 0))
+            mask_rgba.putalpha(mask)
+            
+            # グラデーションをマスクに適用（新しいアプローチ）
+            for y in range(base.size[1]):
+                for x in range(base.size[0]):
+                    if mask.getpixel((x, y)) > 0:  # マスクが非ゼロの場合
+                        r, g, b, _ = grad_rgba.getpixel((x, y))
+                        gradient_text.putpixel((x, y), (r, g, b, mask.getpixel((x, y))))
+            
+            # 修正：グラデーションテキストをtxt_layerに合成
+            txt_layer = Image.alpha_composite(txt_layer, gradient_text)
+            logging.info("gradientを適応しました")
         else:
             d.text(xy, text, font=font, fill=fill)
+            logging.warning("gradientが存在しません")
 
-        # ベベル＆エンボス（簡易）：ハイライトとシャドウを 1px ずらして描画
+        # ベベル＆エンボス：ハイライトとシャドウを 1px ずらして描画
         if bevel:
             bevel_layer = Image.new("RGBA", base.size, (0, 0, 0, 0))
             bd = ImageDraw.Draw(bevel_layer)
@@ -595,7 +619,7 @@ class VideoMaker:
                 self.draw_text_effect(
                     img, line, (x, y), name_font,
                     fill=(0xB5, 0x2E, 0x2E),
-                    gradient=[(0xD7, 0x55, 0x4F), (0x82, 0x16, 0x16)], 
+                    gradient=[(0x82, 0x16, 0x16), (0x82, 0x16, 0x16)], 
                     inner_stroke_width=4,  inner_stroke_fill=(255, 255, 255),
                     stroke_width=10, stroke_fill=(0, 0, 0),
                     glow_radius=15, glow_opacity=0.50
@@ -673,7 +697,7 @@ class VideoMaker:
         self.draw_text_effect(
             bg, "マジで", ((self.VIDEO_WIDTH-w)//2, y),
             heavy220,
-            gradient=[(0xD7, 0x55, 0x4F), (0x82, 0x16, 0x16)],
+            gradient=[(0x82, 0x16, 0x16), (0x82, 0x16, 0x16)],
             inner_stroke_width=4, inner_stroke_fill=(255, 255, 255),
             stroke_width=10, stroke_fill=(0, 0, 0),
             glow_radius=15, glow_opacity=0.5
@@ -685,7 +709,7 @@ class VideoMaker:
             self.draw_text_effect(
                 bg, line, ((self.VIDEO_WIDTH-w)//2, y),
                 heavy150,
-                gradient=[(0xD7, 0x55, 0x4F), (0x82, 0x16, 0x16)],
+                gradient=[(0x82, 0x16, 0x16), (0x82, 0x16, 0x16)],
                 inner_stroke_width=4, inner_stroke_fill=(255, 255, 255),
                 stroke_width=10, stroke_fill=(0, 0, 0),
                 glow_radius=15, glow_opacity=0.5
@@ -754,7 +778,7 @@ class VideoMaker:
             stroke_width=5, stroke_fill=(0, 0, 0),
             glow_radius=10, glow_opacity=0.2
         )
-        y += 100
+        # y += 100
 
         assets = [
             ("data/assets/atsugesyou.png", "left"),   # 左下
@@ -771,9 +795,9 @@ class VideoMaker:
             try:
                 deco = Image.open(path).convert("RGBA")
 
-                # 画像を大きすぎないサイズ（画面幅 25%・高さ 15% 以内）に収める
+                # 画像を大きすぎないサイズ（画面幅 40%・高さ 20% 以内）に収める
                 max_w = int(self.VIDEO_WIDTH * 0.4)
-                max_h = int(self.VIDEO_HEIGHT * 0.15)
+                max_h = int(self.VIDEO_HEIGHT * 0.2)
                 dw, dh = deco.size
                 scale = min(max_w / dw, max_h / dh, 1.0)
                 deco = deco.resize((int(dw*scale), int(dh*scale)), Image.LANCZOS)
@@ -804,7 +828,7 @@ class VideoMaker:
         # 中央配置
         w = self.calculate_text_width(text, heavy60, draw)
         x = (self.VIDEO_WIDTH - w) // 2
-        y = self.VIDEO_HEIGHT - 630
+        y = self.VIDEO_HEIGHT - 700
         
         self.draw_text_effect(
             bg, text, (x, y),
@@ -979,7 +1003,7 @@ class VideoMaker:
                             self.draw_text_effect(
                                 frame_img, line, (x, current_name_y), name_font,
                                 fill=(0xB5, 0x2E, 0x2E),
-                                gradient=[(0xD7, 0x55, 0x4F), (0x82, 0x16, 0x16)],
+                                gradient=[(0x82, 0x16, 0x16), (0x82, 0x16, 0x16)],
                                 inner_stroke_width=4, inner_stroke_fill=(255, 255, 255),
                                 stroke_width=10, stroke_fill=(0, 0, 0),
                                 glow_radius=15, glow_opacity=0.50
