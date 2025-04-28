@@ -1175,6 +1175,58 @@ class VideoMaker:
             import traceback
             logger.error(traceback.format_exc())
             return False
+        
+    def _prepare_product_intro_text(self, rank, brand_name, product_name):
+        """
+        商品紹介用のテキストを生成（ブランド名が商品名に含まれる場合の冗長さを回避）
+        
+        Args:
+            rank: 順位
+            brand_name: ブランド名
+            product_name: 商品名
+        
+        Returns:
+            str: フォーマットされた紹介テキスト
+        """
+        # ブランド名がすでに商品名に含まれているかチェック
+        if product_name.startswith(f"{brand_name} ") or product_name.startswith(brand_name):
+            return f"{rank}位、{product_name}"
+        
+        if f" {brand_name} " in product_name:
+            return f"{rank}位、{product_name}"
+        
+        if product_name.endswith(f" {brand_name}") or product_name.endswith(brand_name):
+            return f"{rank}位、{product_name}"
+        
+        if brand_name.lower() in product_name.lower():
+            # スペースをチェックして、別の単語の一部でないことを確認
+            product_lower = product_name.lower()
+            brand_lower = brand_name.lower()
+            
+            # 商品名内のブランド名の全出現箇所を検索
+            start_idx = 0
+            is_standalone = False
+            
+            while True:
+                idx = product_lower.find(brand_lower, start_idx)
+                if idx == -1:
+                    break
+                    
+                # ブランド名が独立した単語かチェック
+                before_ok = idx == 0 or not product_lower[idx-1].isalnum()
+                after_ok = idx + len(brand_lower) == len(product_lower) or not product_lower[idx + len(brand_lower)].isalnum()
+                
+                if before_ok and after_ok:
+                    is_standalone = True
+                    break
+                    
+                start_idx = idx + 1
+                
+            if is_standalone:
+                return f"{rank}位、{product_name}"
+        
+        # デフォルト: ブランド名が商品名に含まれていない場合
+        return f"{rank}位、{brand_name}の{product_name}"
 
     def wrap_text(self, text, font, draw, max_width):
         """
