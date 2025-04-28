@@ -870,19 +870,19 @@ class VideoMaker:
         bg = self._create_main_intro_slide(channel, genre).convert("RGBA")
         draw = ImageDraw.Draw(bg)
         
-        heavy60 = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY, 60)
+        heavy70 = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY, 70)
         text = "※これはブックマーク必須やで"
         
         # 中央配置
-        w = self.calculate_text_width(text, heavy60, draw)
+        w = self.calculate_text_width(text, heavy70, draw)
         x = (self.VIDEO_WIDTH - w) // 2
         y = self.VIDEO_HEIGHT - 700
         
         self.draw_text_effect(
             bg, text, (x, y),
-            heavy60,
+            heavy70,
             fill=(199, 22, 22),
-            stroke_width=2, stroke_fill=(255, 226, 82),
+            stroke_width=1, stroke_fill=(255, 226, 82),
             # inner_stroke_width=1, inner_stroke_fill=(158, 0, 0),
             glow_radius=20, glow_opacity=0.7
         )
