@@ -337,7 +337,8 @@ class CosmeDatabase:
             更新成功したかどうか
         """
         try:
-            cursor = self.conn.cursor()
+            conn = self._get_connection()
+            cursor = conn.cursor()
             
             # 更新タイムスタンプ
             updated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -365,7 +366,8 @@ class CosmeDatabase:
                 """
                 cursor.execute(sql, (status, updated_at, run_id))
             
-            self.conn.commit()
+            conn.commit()
+            conn.close()
             
             self.logger.info(f"実行ID {run_id} のステータスを '{status}' に更新しました")
             return True

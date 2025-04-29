@@ -222,43 +222,63 @@ def run_pipeline(args):
         # 10. GCS へアップロード
         gcs_uri = ""
         thumbnail_gcs_uri = ""  # 変数の初期化
-        
+
         if gcs_upload:
-            uploader = GCSUploader(
-                bucket_name=os.environ["GCS_BUCKET"],
-                credentials_path=os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"),
-                project_id=os.environ.get("GCP_PROJECT_ID")
-            )
-            
-            # 動画とサムネイルを一緒にアップロード
-            video_uri, thumbnail_uri = uploader.upload_video_and_thumbnail(
-                video_path=output_video,
-                thumbnail_path=thumbnail_path,
-                title=f"{args.channel}で買える{args.genre}ランキング",
-                genre=args.genre,
-                channel=args.channel
-            )
-            gcs_uri = video_uri
-            thumbnail_gcs_uri = thumbnail_uri  # thumbnail_gcs_uriに代入
-            logger.info(f"GCSアップロード完了: 動画={gcs_uri}, サムネイル={thumbnail_gcs_uri}")
+            # GCS認証ファイルパスの確認
+            credentials_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+            if not credentials_path or not os.path.exists(credentials_path):
+                logger.warning(f"GCS認証ファイルが見つかりません: {credentials_path}")
+                logger.warning("GCSアップロードをスキップします")
+            else:
+                try:
+                    logging.info("credentials_pathが存在します。")
+                    uploader = GCSUploader(
+                        bucket_name=os.environ["GCS_BUCKET"],
+                        credentials_path=credentials_path,
+                        project_id=os.environ.get("GCP_PROJECT_ID")
+                    )
+                    
+                    # 動画とサムネイルを一緒にアップロード
+                    video_uri, thumbnail_uri = uploader.upload_video_and_thumbnail(
+                        video_path=output_video,
+                        thumbnail_path=thumbnail_path,
+                        title=f"{args.channel}で買える{args.genre}ランキング",
+                        genre=args.genre,
+                        channel=args.channel
+                    )
+                    gcs_uri = video_uri
+                    thumbnail_gcs_uri = thumbnail_uri  # thumbnail_gcs_uriに代入
+                    logger.info(f"GCSアップロード完了: 動画={gcs_uri}, サムネイル={thumbnail_gcs_uri}")
+                except Exception as e:
+                    logger.error(f"GCSアップロード中にエラーが発生しました: {str(e)}")
         else:
-            logging.info("GCP upload skipped")
+            logger.info("GCP upload skipped")
 
-        poster = SocialMediaPoster(
-            enable_youtube=os.environ.get("ENABLE_YOUTUBE_SHORTS", "true").lower() == "true",
-            enable_tiktok=os.environ.get("ENABLE_TIKTOK_SHORTS", "false").lower() == "true",
-            enable_instagram=os.environ.get("ENABLE_INSTAGRAM_SHORTS", "false").lower() == "true",
-        )
+        # 11. Social Media Posting
+        if os.environ.get("ENABLE_SOCIAL_MEDIA", "").lower() == "true":
+            try:
+                social_media_poster = SocialMediaPoster(
+                    enable_youtube=os.environ.get("ENABLE_YOUTUBE_UPLOAD", "").lower() == "true",
+                    youtube_client_secrets=os.environ.get("YOUTUBE_CLIENT_SECRETS"),
+                    youtube_token_path=os.environ.get("YOUTUBE_TOKEN"),
+                    target_channel_id=os.environ.get("TARGET_CHANNEL_ID")
+                )
+                
+                social_media_results = social_media_poster.post_video(
+                    video_path=output_video,
+                    title=f"{args.channel}で買える{args.genre}ランキング",
+                    description=f"{args.channel}で買える人気{args.genre}のランキングをご紹介します！",
+                    thumbnail_path=thumbnail_path,
+                    tags=[args.genre, "ランキング", "コスメ", args.channel]
+                )
+                logger.info(f"SNS投稿結果: {social_media_results}")
+            except Exception as e:
+                logger.error(f"SNS投稿エラー: {str(e)}")
+                social_media_results = None
+        else:
+            logger.info("Social media posting skipped")
 
-        social_media_results = poster.post_video(
-            video_path=output_video,
-            title=f"{args.channel}で買える{args.genre}ランキング",
-            description="#Shorts",
-            thumbnail_path=thumbnail_path
-        )
-        logger.info(f"ソーシャルメディア投稿結果: {social_media_results}")
-
-        # 11. QA ＋ スプレッドシート登録
+        # 12. QA ＋ スプレッドシート登録
         qa = VideoQA()
         is_ok, metadata, err = qa.validate_video(output_video)
         # メタデータに製品情報を追加
@@ -291,7 +311,7 @@ def run_pipeline(args):
                 reminder=True
             )
 
-        # 12. 通知
+        # 13. 通知
         notifier = Notifier()
         if is_ok:
             notifier.notify_video_created(
