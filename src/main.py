@@ -256,10 +256,10 @@ def run_pipeline(args):
 
         # 11. Social Media Posting
         social_media_results = None
-        if os.environ.get("ENABLE_SOCIAL_MEDIA", "").lower() == "true":
+        if os.environ.get("ENABLE_SOCIAL_MEDIA").lower() == "true":
             try:
                 social_media_poster = SocialMediaPoster(
-                    enable_youtube=os.environ.get("ENABLE_YOUTUBE_UPLOAD", "").lower() == "true",
+                    enable_youtube=os.environ.get("ENABLE_YOUTUBE_SHORTS", "").lower() == "true",
                     youtube_client_secrets=os.environ.get("YOUTUBE_CLIENT_SECRETS"),
                     youtube_token_path=os.environ.get("YOUTUBE_TOKEN"),
                     target_channel_id=os.environ.get("TARGET_CHANNEL_ID")
@@ -290,11 +290,11 @@ def run_pipeline(args):
             genre=args.genre,
             channel=args.channel,
             title=f"{args.channel}で買える{args.genre}ランキング",
+            ranking_type=args.ranking_type,
             gcs_uri=gcs_uri,
             thumbnail_gcs_uri=thumbnail_gcs_uri,
             qa_status="OK" if is_ok else "NG",
             notes=err,
-            thumbnail_path=thumbnail_path,
             run_id=run_id,
             social_media_results=social_media_results
         )

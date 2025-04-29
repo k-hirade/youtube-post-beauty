@@ -216,10 +216,10 @@ class VideoQA:
         genre: str,
         channel: str,
         title: str,
+        ranking_type: str,  # Added ranking_type parameter
         gcs_uri: Optional[str] = None,
         qa_status: str = "OK",
         notes: str = "",
-        thumbnail_path: Optional[str] = None,
         thumbnail_gcs_uri: Optional[str] = None,
         run_id: Optional[int] = None,
         social_media_results: Optional[Dict[str, Dict[str, str]]] = None
@@ -232,10 +232,10 @@ class VideoQA:
             genre: ジャンル
             channel: チャンネル
             title: タイトル
+            ranking_type: ランキングタイプ
             gcs_uri: GCS URI（動画）
             qa_status: 検証ステータス
             notes: 備考
-            thumbnail_path: サムネイルのローカルパス
             thumbnail_gcs_uri: サムネイルのGCS URI
             run_id: 実行ID
             social_media_results: SNSアップロード結果
@@ -263,8 +263,8 @@ class VideoQA:
                 
                 # ヘッダー設定
                 header = [
-                    "ID", "タイムスタンプ", "タイトル", "ジャンル", "チャンネル",
-                    "GCS動画URI", "GCSサムネイルURI", "ローカル動画パス", "ローカルサムネイルパス",
+                    "動画ID", "タイムスタンプ", "タイトル", "ジャンル", "チャンネル", "ランキングタイプ",
+                    "GCS動画URI", "GCSサムネイルURI",
                     "YouTubeアップロード", "YouTube URL", "YouTube 動画ID",
                     "TikTokアップロード", "TikTok URL", 
                     "Instagramアップロード", "Instagram URL",
@@ -310,18 +310,46 @@ class VideoQA:
             # メタデータをJSON形式に変換
             metadata_json = json.dumps(metadata)
             
+            # GCS URIのフォーマット変更
+            formatted_gcs_uri = ""
+            if gcs_uri and gcs_uri.startswith("gs://"):
+                formatted_gcs_uri = gcs_uri.replace("gs://", "https://storage.cloud.google.com/")
+            else:
+                formatted_gcs_uri = gcs_uri or ''
+                
+            formatted_thumbnail_gcs_uri = ""
+            if thumbnail_gcs_uri and thumbnail_gcs_uri.startswith("gs://"):
+                formatted_thumbnail_gcs_uri = thumbnail_gcs_uri.replace("gs://", "https://storage.cloud.google.com/")
+            else:
+                formatted_thumbnail_gcs_uri = thumbnail_gcs_uri or ''
+            
+            # 前回の最大動画IDを取得
+            try:
+                all_rows = worksheet.get_all_values()
+                if len(all_rows) > 1:  # ヘッダー行を除く
+                    # 最後の行の動画ID（最初の列）を取得
+                    last_video_id = all_rows[-1][0]
+                    # 数値に変換
+                    if last_video_id and last_video_id.isdigit():
+                        video_id = int(last_video_id) + 1
+                    else:
+                        video_id = 1
+                else:
+                    video_id = 1
+            except Exception as e:
+                logger.error(f"動画ID取得エラー: {str(e)}")
+                video_id = 1
+            
             # データ行作成
-            # 注: IDは自動採番されるためスキップ
             row = [
-                "",  # ID（自動採番）
+                str(video_id),  # 動画ID
                 timestamp,
                 title,
                 genre,
                 channel,
-                gcs_uri or '',
-                thumbnail_gcs_uri or '',
-                metadata.get('path', ''),
-                thumbnail_path or '',
+                ranking_type,  # ランキングタイプを追加
+                formatted_gcs_uri,
+                formatted_thumbnail_gcs_uri,
                 youtube_uploaded,
                 youtube_url,
                 youtube_id,
@@ -338,13 +366,9 @@ class VideoQA:
             ]
 
             try:
-                # スプレッドシートに追加して、追加された行のインデックスを取得
+                # スプレッドシートに追加
                 response = worksheet.append_row(row)
-                # 行番号は1から始まるインデックスなので、ヘッダー行を除いて実際の行数を取得
-                row_index = len(worksheet.get_all_values())
-                video_id = row_index - 1  # ヘッダー行を除く
-                
-                logger.info(f"スプレッドシートに追加成功: {title}, ID: {video_id}")
+                logger.info(f"スプレッドシートに追加成功: {title}, 動画ID: {video_id}")
 
             except Exception as sheet_error:
                 logger.error(f"スプレッドシート行追加エラー: {type(sheet_error).__name__}: {str(sheet_error)}")
@@ -387,12 +411,12 @@ class VideoQA:
                 worksheet = spreadsheet.add_worksheet(
                     title="使用製品",
                     rows=1000,
-                    cols=7
+                    cols=6  # カラム数を7から6に変更（ランク列を削除）
                 )
                 
-                # ヘッダー設定
+                # ヘッダー設定（ランク列を削除）
                 header = [
-                    "動画ID", "製品ID", "ランク", "製品名", "ブランド", "画像URL", "製品URL"
+                    "動画ID", "製品ID", "製品名", "ブランド", "画像URL", "製品URL"
                 ]
                 worksheet.append_row(header)
             
@@ -401,7 +425,7 @@ class VideoQA:
                 row = [
                     str(video_id),
                     product.get("product_id", ""),
-                    str(product.get("new_rank", "")),
+                    # "ランク" 列を削除
                     product.get("name", ""),
                     product.get("brand", ""),
                     product.get("image_url", ""),
