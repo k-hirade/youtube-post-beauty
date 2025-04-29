@@ -255,6 +255,7 @@ def run_pipeline(args):
             logger.info("GCP upload skipped")
 
         # 11. Social Media Posting
+        social_media_results = None
         if os.environ.get("ENABLE_SOCIAL_MEDIA", "").lower() == "true":
             try:
                 social_media_poster = SocialMediaPoster(

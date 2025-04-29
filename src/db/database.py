@@ -340,31 +340,66 @@ class CosmeDatabase:
             conn = self._get_connection()
             cursor = conn.cursor()
             
-            # 更新タイムスタンプ
-            updated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            # Check if updated_at column exists in runs table
+            cursor.execute("PRAGMA table_info(runs)")
+            columns = cursor.fetchall()
+            column_names = [column['name'] for column in columns]
             
-            # SQLの準備（video_gs_uriとthumbnail_gs_uriが指定された場合は一緒に更新）
+            # Determine column name for primary key (could be 'id' or 'run_id')
+            id_column = 'run_id'  # Default to run_id
+            if 'id' in column_names and 'run_id' not in column_names:
+                id_column = 'id'
+                
+            # Check if updated_at exists
+            has_updated_at = 'updated_at' in column_names
+            
+            # Prepare SQL based on available columns and parameters
             if video_gs_uri and thumbnail_gs_uri:
-                sql = """
-                    UPDATE runs 
-                    SET status = ?, updated_at = ?, video_gs_uri = ?, thumbnail_gs_uri = ?
-                    WHERE id = ?
-                """
-                cursor.execute(sql, (status, updated_at, video_gs_uri, thumbnail_gs_uri, run_id))
+                if has_updated_at:
+                    sql = f"""
+                        UPDATE runs 
+                        SET status = ?, updated_at = ?, video_gs_uri = ?, thumbnail_gs_uri = ?
+                        WHERE {id_column} = ?
+                    """
+                    cursor.execute(sql, (status, datetime.now().isoformat(), video_gs_uri, thumbnail_gs_uri, run_id))
+                else:
+                    # If updated_at doesn't exist, don't include it
+                    sql = f"""
+                        UPDATE runs 
+                        SET status = ?, video_gs_uri = ?, thumbnail_gs_uri = ?
+                        WHERE {id_column} = ?
+                    """
+                    cursor.execute(sql, (status, video_gs_uri, thumbnail_gs_uri, run_id))
             elif video_gs_uri:
-                sql = """
-                    UPDATE runs 
-                    SET status = ?, updated_at = ?, video_gs_uri = ?
-                    WHERE id = ?
-                """
-                cursor.execute(sql, (status, updated_at, video_gs_uri, run_id))
+                if has_updated_at:
+                    sql = f"""
+                        UPDATE runs 
+                        SET status = ?, updated_at = ?, video_gs_uri = ?
+                        WHERE {id_column} = ?
+                    """
+                    cursor.execute(sql, (status, datetime.now().isoformat(), video_gs_uri, run_id))
+                else:
+                    sql = f"""
+                        UPDATE runs 
+                        SET status = ?, video_gs_uri = ?
+                        WHERE {id_column} = ?
+                    """
+                    cursor.execute(sql, (status, video_gs_uri, run_id))
             else:
-                sql = """
-                    UPDATE runs 
-                    SET status = ?, updated_at = ?
-                    WHERE id = ?
-                """
-                cursor.execute(sql, (status, updated_at, run_id))
+                if has_updated_at:
+                    sql = f"""
+                        UPDATE runs 
+                        SET status = ?, updated_at = ?
+                        WHERE {id_column} = ?
+                    """
+                    cursor.execute(sql, (status, datetime.now().isoformat(), run_id))
+                else:
+                    sql = f"""
+                        UPDATE runs 
+                        SET status = ?
+                        WHERE {id_column} = ?
+                    """
+                    cursor.execute(sql, (status, run_id))
             
             conn.commit()
             conn.close()

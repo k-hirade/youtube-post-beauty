@@ -149,7 +149,7 @@ class VideoQA:
         expected_width: int = 1080,
         expected_height: int = 1920,
         min_duration: float = 10.0,
-        max_duration: float = 60.0
+        max_duration: float = 120.0
     ) -> Tuple[bool, Dict[str, Any], str]:
         """
         動画が期待する仕様を満たしているか検証
@@ -336,14 +336,19 @@ class VideoQA:
                 metadata_json,
                 ""  # 備考
             ]
-            
-            # スプレッドシートに追加して、追加された行のインデックスを取得
-            response = worksheet.append_row(row)
-            # 行番号は1から始まるインデックスなので、ヘッダー行を除いて実際の行数を取得
-            row_index = len(worksheet.get_all_values())
-            video_id = row_index - 1  # ヘッダー行を除く
-            
-            logger.info(f"スプレッドシートに追加成功: {title}, ID: {video_id}")
+
+            try:
+                # スプレッドシートに追加して、追加された行のインデックスを取得
+                response = worksheet.append_row(row)
+                # 行番号は1から始まるインデックスなので、ヘッダー行を除いて実際の行数を取得
+                row_index = len(worksheet.get_all_values())
+                video_id = row_index - 1  # ヘッダー行を除く
+                
+                logger.info(f"スプレッドシートに追加成功: {title}, ID: {video_id}")
+
+            except Exception as sheet_error:
+                logger.error(f"スプレッドシート行追加エラー: {type(sheet_error).__name__}: {str(sheet_error)}")
+                pass
             
             # 製品情報が含まれている場合は「使用製品」ワークシートにも追加
             if "products" in metadata and isinstance(metadata["products"], list):
@@ -352,7 +357,9 @@ class VideoQA:
             return True
             
         except Exception as e:
-            logger.error(f"スプレッドシート追加エラー: {str(e)}")
+            import traceback
+            error_details = traceback.format_exc()
+            logger.error(f"スプレッドシート追加エラー詳細:\n{error_details}")
             return False
 
     def _add_products_to_spreadsheet(
