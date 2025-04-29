@@ -312,20 +312,20 @@ def run_pipeline(args):
         #         reminder=True
         #     )
 
-        # 13. 通知
-        notifier = Notifier()
-        if is_ok:
-            notifier.notify_video_created(
-                title=os.path.basename(output_video),
-                video_path=output_video,
-                gcs_uri=gcs_uri,
-                products=selected_with_reviews
-            )
-        else:
-            notifier.notify_error(
-                title="動画QA失敗",
-                error_message=err
-            )
+        # # 13. 通知
+        # notifier = Notifier()
+        # if is_ok:
+        #     notifier.notify_video_created(
+        #         title=os.path.basename(output_video),
+        #         video_path=output_video,
+        #         gcs_uri=gcs_uri,
+        #         products=selected_with_reviews
+        #     )
+        # else:
+        #     notifier.notify_error(
+        #         title="動画QA失敗",
+        #         error_message=err
+        #     )
 
         db.update_run_status(
             run_id=run_id, 
