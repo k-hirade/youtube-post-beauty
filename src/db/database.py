@@ -25,6 +25,7 @@ class CosmeDatabase:
         self.db_path = db_path
         self._ensure_db_dir()
         self._init_db()
+        self.logger = logging.getLogger(__name__)
     
     def _ensure_db_dir(self):
         """データベースディレクトリが存在することを確認"""
@@ -315,57 +316,62 @@ class CosmeDatabase:
         except Exception as e:
             logger.error(f"実行記録作成エラー: {str(e)}")
             return None
-    
+
     def update_run_status(
-        self,
-        run_id: int,
-        status: str,
+        self, 
+        run_id: int, 
+        status: str, 
         video_gs_uri: Optional[str] = None,
-        ranking_type: Optional[str] = None,
-        notes: Optional[str] = None
+        thumbnail_gs_uri: Optional[str] = None
     ) -> bool:
         """
-        実行記録のステータスを更新
+        実行レコードのステータスを更新
         
         Args:
             run_id: 実行ID
             status: 新しいステータス
-            video_gs_uri: 動画のCloud StorageのURI（成功時）
-            ranking_type: ランキングタイプ
-            notes: 追加の備考
+            video_gs_uri: 動画のGCS URI（完了時）
+            thumbnail_gs_uri: サムネイルのGCS URI（完了時）
             
         Returns:
-            成功したかどうか
+            更新成功したかどうか
         """
         try:
-            conn = self._get_connection()
-            cursor = conn.cursor()
+            cursor = self.conn.cursor()
             
-            query = "UPDATE runs SET status = ?"
-            params = [status]
+            # 更新タイムスタンプ
+            updated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             
-            if video_gs_uri:
-                query += ", video_gs_uri = ?"
-                params.append(video_gs_uri)
+            # SQLの準備（video_gs_uriとthumbnail_gs_uriが指定された場合は一緒に更新）
+            if video_gs_uri and thumbnail_gs_uri:
+                sql = """
+                    UPDATE runs 
+                    SET status = ?, updated_at = ?, video_gs_uri = ?, thumbnail_gs_uri = ?
+                    WHERE id = ?
+                """
+                cursor.execute(sql, (status, updated_at, video_gs_uri, thumbnail_gs_uri, run_id))
+            elif video_gs_uri:
+                sql = """
+                    UPDATE runs 
+                    SET status = ?, updated_at = ?, video_gs_uri = ?
+                    WHERE id = ?
+                """
+                cursor.execute(sql, (status, updated_at, video_gs_uri, run_id))
+            else:
+                sql = """
+                    UPDATE runs 
+                    SET status = ?, updated_at = ?
+                    WHERE id = ?
+                """
+                cursor.execute(sql, (status, updated_at, run_id))
             
-            if ranking_type:
-                query += ", ranking_type = ?"
-                params.append(ranking_type)
-                
-            if notes:
-                query += ", error_details = ?"
-                params.append(notes)
-                
-            query += " WHERE run_id = ?"
-            params.append(run_id)
+            self.conn.commit()
             
-            cursor.execute(query, params)
-            
-            conn.commit()
-            conn.close()
+            self.logger.info(f"実行ID {run_id} のステータスを '{status}' に更新しました")
             return True
+            
         except Exception as e:
-            logger.error(f"実行記録更新エラー: {str(e)}")
+            self.logger.error(f"実行ステータス更新エラー: {str(e)}")
             return False
 
     def save_reviews(

@@ -10,6 +10,7 @@ import logging
 import argparse
 from datetime import datetime
 from typing import Dict, List, Optional, Any
+from datetime import datetime, timedelta
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
@@ -219,6 +220,9 @@ def run_pipeline(args):
         gcs_upload = os.environ.get("GCS_UPLOAD")
 
         # 10. GCS へアップロード
+        gcs_uri = ""
+        thumbnail_gcs_uri = ""  # 変数の初期化
+        
         if gcs_upload:
             uploader = GCSUploader(
                 bucket_name=os.environ["GCS_BUCKET"],
@@ -227,13 +231,16 @@ def run_pipeline(args):
             )
             
             # 動画とサムネイルを一緒にアップロード
-            gcs_uri = uploader.upload_video(
+            video_uri, thumbnail_uri = uploader.upload_video_and_thumbnail(
                 video_path=output_video,
-                title=os.path.basename(output_video),
+                thumbnail_path=thumbnail_path,
+                title=f"{args.channel}で買える{args.genre}ランキング",
                 genre=args.genre,
-                channel=args.channel,
-                thumbnail_path=thumbnail_path
+                channel=args.channel
             )
+            gcs_uri = video_uri
+            thumbnail_gcs_uri = thumbnail_uri  # thumbnail_gcs_uriに代入
+            logger.info(f"GCSアップロード完了: 動画={gcs_uri}, サムネイル={thumbnail_gcs_uri}")
         else:
             logging.info("GCP upload skipped")
 
@@ -243,37 +250,45 @@ def run_pipeline(args):
             enable_instagram=os.environ.get("ENABLE_INSTAGRAM_SHORTS", "false").lower() == "true",
         )
 
-        post_res = poster.post_video(
+        social_media_results = poster.post_video(
             video_path=output_video,
             title=f"{args.channel}で買える{args.genre}ランキング",
-            description="#Shorts"
+            description="#Shorts",
+            thumbnail_path=thumbnail_path
         )
-        logger.info(f"Social upload result: {post_res}")
+        logger.info(f"ソーシャルメディア投稿結果: {social_media_results}")
 
         # 11. QA ＋ スプレッドシート登録
         qa = VideoQA()
-        is_ok, meta, err = qa.validate_video(output_video)
-
-        if gcs_upload:
-            qa.add_to_spreadsheet(
-                metadata=meta,
-                genre=args.genre,
-                channel=args.channel,
-                title=os.path.basename(output_video),
-                gcs_uri=gcs_uri,
-                qa_status="OK" if is_ok else "NG",
-                notes=err
-            )
-        else:
-            gcs_uri = ""
-            qa.add_to_spreadsheet(
-                metadata=meta,
-                genre=args.genre,
-                channel=args.channel,
-                title=os.path.basename(output_video),
-                gcs_uri=gcs_uri,
-                qa_status="OK" if is_ok else "NG",
-                notes=err
+        is_ok, metadata, err = qa.validate_video(output_video)
+        # メタデータに製品情報を追加
+        metadata["products"] = selected_with_reviews
+        # スプレッドシートへの追加
+        qa.add_to_spreadsheet(
+            metadata=metadata,
+            genre=args.genre,
+            channel=args.channel,
+            title=f"{args.channel}で買える{args.genre}ランキング",
+            gcs_uri=gcs_uri,
+            thumbnail_gcs_uri=thumbnail_gcs_uri,
+            qa_status="OK" if is_ok else "NG",
+            notes=err,
+            thumbnail_path=thumbnail_path,
+            run_id=run_id,
+            social_media_results=social_media_results
+        )
+        # YouTubeアップロードが成功した場合、公開スケジュールに追加
+        if social_media_results and social_media_results.get("youtube", {}).get("success", False):
+            # 現在の日付から1週間後を公開予定日として設定
+            publish_date = (datetime.now() + timedelta(days=7)).strftime('%Y-%m-%d')
+            
+            qa.add_publishing_schedule(
+                video_id=1,
+                publish_date=publish_date,
+                platform="YouTube",
+                status="スケジュール済み",
+                assignee="",
+                reminder=True
             )
 
         # 12. 通知
@@ -291,7 +306,13 @@ def run_pipeline(args):
                 error_message=err
             )
 
-        db.update_run_status(run_id, "success", video_gs_uri=gcs_uri)
+        db.update_run_status(
+            run_id=run_id, 
+            status="success", 
+            video_gs_uri=gcs_uri,
+            thumbnail_gs_uri=thumbnail_gcs_uri
+        )
+        
         return True
         
     except Exception as e:

@@ -9,6 +9,7 @@ import json
 import subprocess
 from typing import Dict, List, Optional, Any, Tuple
 from datetime import datetime
+import json
 
 # Google Sheets連携
 import gspread
@@ -25,8 +26,7 @@ class VideoQA:
         self,
         ffprobe_path: Optional[str] = None,
         credentials_path: Optional[str] = None,
-        spreadsheet_id: Optional[str] = None,
-        worksheet_name: Optional[str] = "VideoQA"
+        spreadsheet_id: Optional[str] = None
     ):
         """
         初期化
@@ -35,7 +35,6 @@ class VideoQA:
             ffprobe_path: ffprobeのパス
             credentials_path: Google APIの認証情報JSONのパス
             spreadsheet_id: スプレッドシートID
-            worksheet_name: ワークシート名
         """
         # ffprobeのパス設定
         self.ffprobe_path = ffprobe_path or "ffprobe"
@@ -43,7 +42,6 @@ class VideoQA:
         # Google Sheets関連
         self.credentials_path = credentials_path or os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
         self.spreadsheet_id = spreadsheet_id or os.environ.get("SHEET_ID")
-        self.worksheet_name = worksheet_name
         self.sheets_client = None
         
         # Google Sheets初期化
@@ -211,7 +209,7 @@ class VideoQA:
         except Exception as e:
             logger.error(f"動画検証エラー: {str(e)}")
             return False, {}, f"検証処理エラー: {str(e)}"
-    
+
     def add_to_spreadsheet(
         self,
         metadata: Dict[str, Any],
@@ -220,7 +218,11 @@ class VideoQA:
         title: str,
         gcs_uri: Optional[str] = None,
         qa_status: str = "OK",
-        notes: str = ""
+        notes: str = "",
+        thumbnail_path: Optional[str] = None,
+        thumbnail_gcs_uri: Optional[str] = None,
+        run_id: Optional[int] = None,
+        social_media_results: Optional[Dict[str, Dict[str, str]]] = None
     ) -> bool:
         """
         スプレッドシートに動画情報を追加
@@ -230,8 +232,282 @@ class VideoQA:
             genre: ジャンル
             channel: チャンネル
             title: タイトル
-            gcs_uri: GCS URI
+            gcs_uri: GCS URI（動画）
             qa_status: 検証ステータス
+            notes: 備考
+            thumbnail_path: サムネイルのローカルパス
+            thumbnail_gcs_uri: サムネイルのGCS URI
+            run_id: 実行ID
+            social_media_results: SNSアップロード結果
+            
+        Returns:
+            成功したかどうか
+        """
+        if not self.sheets_client or not self.spreadsheet_id:
+            logger.warning("Google Sheets連携が設定されていません")
+            return False
+        
+        try:
+            # スプレッドシートを開く
+            spreadsheet = self.sheets_client.open_by_key(self.spreadsheet_id)
+            
+            # 「動画一覧」ワークシートを取得（なければ作成）
+            try:
+                worksheet = spreadsheet.worksheet("動画一覧")
+            except gspread.exceptions.WorksheetNotFound:
+                worksheet = spreadsheet.add_worksheet(
+                    title="動画一覧",
+                    rows=1000,
+                    cols=25
+                )
+                
+                # ヘッダー設定
+                header = [
+                    "ID", "タイムスタンプ", "タイトル", "ジャンル", "チャンネル",
+                    "GCS動画URI", "GCSサムネイルURI", "ローカル動画パス", "ローカルサムネイルパス",
+                    "YouTubeアップロード", "YouTube URL", "YouTube 動画ID",
+                    "TikTokアップロード", "TikTok URL", 
+                    "Instagramアップロード", "Instagram URL",
+                    "QAステータス", "エラー詳細", "実行ID", "動画時間", 
+                    "メタデータ", "備考"
+                ]
+                worksheet.append_row(header)
+            
+            # タイムスタンプの作成
+            timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+            
+            # YouTube情報の取得
+            youtube_uploaded = "FALSE"
+            youtube_url = ""
+            youtube_id = ""
+            
+            # TikTok情報の取得
+            tiktok_uploaded = "FALSE"
+            tiktok_url = ""
+            
+            # Instagram情報の取得
+            instagram_uploaded = "FALSE"
+            instagram_url = ""
+            
+            # ソーシャルメディア結果の処理
+            if social_media_results:
+                # YouTube
+                if social_media_results.get("youtube", {}).get("success", False):
+                    youtube_uploaded = "TRUE"
+                    youtube_id = social_media_results["youtube"].get("id", "")
+                    youtube_url = social_media_results["youtube"].get("url", "")
+                
+                # TikTok
+                if social_media_results.get("tiktok", {}).get("success", False):
+                    tiktok_uploaded = "TRUE"
+                    tiktok_url = social_media_results["tiktok"].get("url", "")
+                
+                # Instagram
+                if social_media_results.get("instagram", {}).get("success", False):
+                    instagram_uploaded = "TRUE"
+                    instagram_url = social_media_results["instagram"].get("url", "")
+            
+            # メタデータをJSON形式に変換
+            metadata_json = json.dumps(metadata)
+            
+            # データ行作成
+            # 注: IDは自動採番されるためスキップ
+            row = [
+                "",  # ID（自動採番）
+                timestamp,
+                title,
+                genre,
+                channel,
+                gcs_uri or '',
+                thumbnail_gcs_uri or '',
+                metadata.get('path', ''),
+                thumbnail_path or '',
+                youtube_uploaded,
+                youtube_url,
+                youtube_id,
+                tiktok_uploaded,
+                tiktok_url,
+                instagram_uploaded,
+                instagram_url,
+                qa_status,
+                notes,
+                run_id or '',
+                f"{metadata.get('duration', 0):.2f}",
+                metadata_json,
+                ""  # 備考
+            ]
+            
+            # スプレッドシートに追加して、追加された行のインデックスを取得
+            response = worksheet.append_row(row)
+            # 行番号は1から始まるインデックスなので、ヘッダー行を除いて実際の行数を取得
+            row_index = len(worksheet.get_all_values())
+            video_id = row_index - 1  # ヘッダー行を除く
+            
+            logger.info(f"スプレッドシートに追加成功: {title}, ID: {video_id}")
+            
+            # 製品情報が含まれている場合は「使用製品」ワークシートにも追加
+            if "products" in metadata and isinstance(metadata["products"], list):
+                self._add_products_to_spreadsheet(spreadsheet, video_id, metadata["products"])
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"スプレッドシート追加エラー: {str(e)}")
+            return False
+
+    def _add_products_to_spreadsheet(
+        self,
+        spreadsheet: Any,
+        video_id: int,
+        products: List[Dict[str, Any]]
+    ) -> bool:
+        """
+        「使用製品」ワークシートに製品情報を追加
+        
+        Args:
+            spreadsheet: スプレッドシートオブジェクト
+            video_id: 動画ID
+            products: 製品情報のリスト
+            
+        Returns:
+            成功したかどうか
+        """
+        try:
+            # 「使用製品」ワークシートを取得（なければ作成）
+            try:
+                worksheet = spreadsheet.worksheet("使用製品")
+            except gspread.exceptions.WorksheetNotFound:
+                worksheet = spreadsheet.add_worksheet(
+                    title="使用製品",
+                    rows=1000,
+                    cols=7
+                )
+                
+                # ヘッダー設定
+                header = [
+                    "動画ID", "製品ID", "ランク", "製品名", "ブランド", "画像URL", "製品URL"
+                ]
+                worksheet.append_row(header)
+            
+            # 各製品情報を追加
+            for product in products:
+                row = [
+                    str(video_id),
+                    product.get("product_id", ""),
+                    str(product.get("new_rank", "")),
+                    product.get("name", ""),
+                    product.get("brand", ""),
+                    product.get("image_url", ""),
+                    product.get("url", "")
+                ]
+                
+                worksheet.append_row(row)
+            
+            logger.info(f"使用製品情報をスプレッドシートに追加成功: 動画ID {video_id}, 製品数 {len(products)}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"製品情報追加エラー: {str(e)}")
+            return False
+
+    def add_performance_data(
+        self,
+        video_id: int,
+        platform: str,
+        view_count: int,
+        like_count: int,
+        comment_count: int,
+        share_count: int,
+        ctr: float = 0.0,
+        avg_watch_time: float = 0.0
+    ) -> bool:
+        """
+        「パフォーマンス分析」ワークシートにデータを追加
+        
+        Args:
+            video_id: 動画ID
+            platform: プラットフォーム名
+            view_count: 再生回数
+            like_count: いいね数
+            comment_count: コメント数
+            share_count: シェア数
+            ctr: クリック率
+            avg_watch_time: 平均視聴時間
+            
+        Returns:
+            成功したかどうか
+        """
+        if not self.sheets_client or not self.spreadsheet_id:
+            logger.warning("Google Sheets連携が設定されていません")
+            return False
+        
+        try:
+            # スプレッドシートを開く
+            spreadsheet = self.sheets_client.open_by_key(self.spreadsheet_id)
+            
+            # 「パフォーマンス分析」ワークシートを取得（なければ作成）
+            try:
+                worksheet = spreadsheet.worksheet("パフォーマンス分析")
+            except gspread.exceptions.WorksheetNotFound:
+                worksheet = spreadsheet.add_worksheet(
+                    title="パフォーマンス分析",
+                    rows=1000,
+                    cols=8
+                )
+                
+                # ヘッダー設定
+                header = [
+                    "動画ID", "プラットフォーム", "計測日", "再生回数", 
+                    "いいね数", "コメント数", "シェア数", "CTR", "平均視聴時間"
+                ]
+                worksheet.append_row(header)
+            
+            # 現在日時
+            today = datetime.now().strftime('%Y-%m-%d')
+            
+            # データ行作成
+            row = [
+                str(video_id),
+                platform,
+                today,
+                str(view_count),
+                str(like_count),
+                str(comment_count),
+                str(share_count),
+                f"{ctr:.2f}",
+                f"{avg_watch_time:.2f}"
+            ]
+            
+            # スプレッドシートに追加
+            worksheet.append_row(row)
+            
+            logger.info(f"パフォーマンスデータをスプレッドシートに追加成功: 動画ID {video_id}, プラットフォーム {platform}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"パフォーマンスデータ追加エラー: {str(e)}")
+            return False
+
+    def add_publishing_schedule(
+        self,
+        video_id: int,
+        publish_date: str,
+        platform: str,
+        status: str = "未公開",
+        assignee: str = "",
+        reminder: bool = False,
+        notes: str = ""
+    ) -> bool:
+        """
+        「公開スケジュール」ワークシートにデータを追加
+        
+        Args:
+            video_id: 動画ID
+            publish_date: 公開予定日 (YYYY-MM-DD形式)
+            platform: 公開プラットフォーム
+            status: 公開ステータス
+            assignee: 担当者
+            reminder: リマインダー設定
             notes: 備考
             
         Returns:
@@ -245,49 +521,40 @@ class VideoQA:
             # スプレッドシートを開く
             spreadsheet = self.sheets_client.open_by_key(self.spreadsheet_id)
             
-            # ワークシートを取得（なければ作成）
+            # 「公開スケジュール」ワークシートを取得（なければ作成）
             try:
-                worksheet = spreadsheet.worksheet(self.worksheet_name)
+                worksheet = spreadsheet.worksheet("公開スケジュール")
             except gspread.exceptions.WorksheetNotFound:
                 worksheet = spreadsheet.add_worksheet(
-                    title=self.worksheet_name,
+                    title="公開スケジュール",
                     rows=1000,
-                    cols=10
+                    cols=7
                 )
                 
                 # ヘッダー設定
                 header = [
-                    "タイムスタンプ", "タイトル", "ジャンル", "チャンネル", 
-                    "ファイル名", "長さ(秒)", "解像度", "サイズ(MB)",
-                    "GCS URI", "QAステータス", "備考"
+                    "動画ID", "予定公開日", "公開プラットフォーム", 
+                    "公開ステータス", "担当者", "リマインダー", "備考"
                 ]
                 worksheet.append_row(header)
             
             # データ行作成
-            now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            resolution = f"{metadata.get('width', 0)}x{metadata.get('height', 0)}"
-            size_mb = metadata.get('size_bytes', 0) / (1024 * 1024)
-            
             row = [
-                now,
-                title,
-                genre,
-                channel,
-                metadata.get('filename', ''),
-                f"{metadata.get('duration', 0):.2f}",
-                resolution,
-                f"{size_mb:.2f}",
-                gcs_uri or '',
-                qa_status,
+                str(video_id),
+                publish_date,
+                platform,
+                status,
+                assignee,
+                "TRUE" if reminder else "FALSE",
                 notes
             ]
             
             # スプレッドシートに追加
             worksheet.append_row(row)
             
-            logger.info(f"スプレッドシートに追加成功: {title}")
+            logger.info(f"公開スケジュールをスプレッドシートに追加成功: 動画ID {video_id}, 予定日 {publish_date}")
             return True
             
         except Exception as e:
-            logger.error(f"スプレッドシート追加エラー: {str(e)}")
+            logger.error(f"公開スケジュール追加エラー: {str(e)}")
             return False
