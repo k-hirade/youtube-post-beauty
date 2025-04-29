@@ -109,79 +109,87 @@ class CosmeDatabase:
             logger.error(f"データベース初期化エラー: {str(e)}")
             raise
     
-    def save_product(self, product: Dict[str, Any]) -> bool:
+    def _add_products_to_spreadsheet(
+        self,
+        spreadsheet: Any,
+        video_id: int,
+        products: List[Dict[str, Any]]
+    ) -> bool:
         """
-        製品情報をデータベースに保存
+        「使用製品」ワークシートに製品情報を追加
         
         Args:
-            product: 製品情報辞書
-        
+            spreadsheet: スプレッドシートオブジェクト
+            video_id: 動画ID
+            products: 製品情報のリスト
+            
         Returns:
             成功したかどうか
         """
         try:
-            now = datetime.now().isoformat()
-            conn = self._get_connection()
-            
-            # 製品が既に存在するか確認
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT product_id FROM products WHERE product_id = ?",
-                (product["product_id"],)
-            )
-            exists = cursor.fetchone()
-            
-            if exists:
-                # 既存の場合は更新
-                cursor.execute(
-                    """
-                    UPDATE products
-                    SET genre = ?, channel = ?, name = ?, brand = ?,
-                        image_url = ?, product_url = ?, brand_url = ?, scraped_rank = ?
-                    WHERE product_id = ?
-                    """,
-                    (
-                        product["genre"],
-                        product["channel"],
-                        product["name"],
-                        product["brand"],
-                        product["image_url"],
-                        product.get("product_url", ""),  # 新しく追加されたフィールド
-                        product.get("brand_url", ""),    # 新しく追加されたフィールド
-                        product["rank"],
-                        product["product_id"]
-                    )
+            # 「使用製品」ワークシートを取得（なければ作成）
+            try:
+                worksheet = spreadsheet.worksheet("使用製品")
+            except gspread.exceptions.WorksheetNotFound:
+                worksheet = spreadsheet.add_worksheet(
+                    title="使用製品",
+                    rows=1000,
+                    cols=6  # カラム数を7から6に変更（ランク列を削除）
                 )
-            else:
-                # 新規の場合は挿入
-                cursor.execute(
-                    """
-                    INSERT INTO products (
-                        product_id, genre, channel, name, brand,
-                        image_url, product_url, brand_url, scraped_rank, first_seen
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        product["product_id"],
-                        product["genre"],
-                        product["channel"],
-                        product["name"],
-                        product["brand"],
-                        product["image_url"],
-                        product.get("product_url", ""),  # 新しく追加されたフィールド
-                        product.get("brand_url", ""),    # 新しく追加されたフィールド
-                        product["rank"],
-                        now
-                    )
-                )
+                
+                # ヘッダー設定（ランク列を削除）
+                header = [
+                    "動画ID", "製品ID", "製品名", "ブランド", "画像URL", "製品URL"
+                ]
+                worksheet.append_row(header)
             
-            conn.commit()
-            conn.close()
+            # 既存の製品IDを取得して、重複チェックに使用
+            existing_product_ids = []
+            try:
+                # すべての行を取得
+                all_rows = worksheet.get_all_values()
+                # ヘッダー行をスキップし、製品IDのインデックス（1）から値を取得
+                for row in all_rows[1:]:  # ヘッダー行をスキップ
+                    if len(row) > 1:  # 行に十分な列があるか確認
+                        existing_product_ids.append(row[1])  # 製品IDは2列目（インデックス1）
+            except Exception as e:
+                logger.warning(f"既存製品ID取得エラー: {str(e)}")
+                # エラーが発生しても処理を続行
+            
+            # 各製品情報を追加（既存の製品はスキップ）
+            added_count = 0
+            skipped_count = 0
+            
+            for product in products:
+                product_id = product.get("product_id", "")
+                
+                # 製品IDが既に存在する場合はスキップ
+                if product_id in existing_product_ids:
+                    logger.info(f"製品ID {product_id} は既に存在するためスキップします")
+                    skipped_count += 1
+                    continue
+                
+                # 新規製品の場合は追加
+                row = [
+                    str(video_id),
+                    product_id,
+                    product.get("name", ""),
+                    product.get("brand", ""),
+                    product.get("image_url", ""),
+                    product.get("url", "")
+                ]
+                
+                worksheet.append_row(row)
+                existing_product_ids.append(product_id)  # 追加した製品IDをリストに追加
+                added_count += 1
+            
+            logger.info(f"使用製品情報をスプレッドシートに追加成功: 動画ID {video_id}, 追加: {added_count}件, スキップ: {skipped_count}件")
             return True
+            
         except Exception as e:
-            logger.error(f"製品保存エラー: {str(e)}")
+            logger.error(f"製品情報追加エラー: {str(e)}")
             return False
-    
+
     def save_products(self, products: List[Dict[str, Any]]) -> int:
         """
         複数の製品情報を一括保存
