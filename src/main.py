@@ -169,15 +169,6 @@ def run_pipeline(args):
             logger.info(f"レビュー生成: {product['name']}")
             reviews = review_generator.generate_reviews(product)
             
-            # コメントデータのバリデーション
-            if reviews and len(reviews) > 0:
-                logger.info(f"有効な口コミ {len(reviews)}件を取得:")
-                for i, review in enumerate(reviews):
-                    logger.info(f"  {i+1}. {review}")
-            else:
-                logger.warning(f"製品 {product['name']} の口コミが取得できませんでした")
-                reviews = []  # 空リストを確実に設定
-            
             product["reviews"] = reviews
             
             # レビューをキャッシュに保存
@@ -206,27 +197,42 @@ def run_pipeline(args):
             return True
         
         # 9. 動画作成
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        video_filename = f"video_{timestamp}.mp4"
         video_maker = VideoMaker(temp_dir=temp_image_dir)  # temp_dirを明示的に設定
         output_video = video_maker.create_video(
             products=selected_with_reviews,
             title=f"{args.channel}で買える{args.genre}ランキング",
             channel=args.channel,
+            output_filename=video_filename,
         )
 
-        skip_gcs_upload = os.environ.get("SKIP_GCS_UPLOAD")
+        # サムネイルの作成
+        thumbnail_filename = f"thumbnail_{timestamp}.png"
+        thumbnail_path = os.path.join('data/temp', thumbnail_filename)
+        video_maker.save_thumbnail(
+            channel=args.channel,
+            genre=args.genre,
+            output_path=thumbnail_path
+        )
+
+        gcs_upload = os.environ.get("GCS_UPLOAD")
 
         # 10. GCS へアップロード
-        if not skip_gcs_upload:
+        if gcs_upload:
             uploader = GCSUploader(
                 bucket_name=os.environ["GCS_BUCKET"],
                 credentials_path=os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"),
                 project_id=os.environ.get("GCP_PROJECT_ID")
             )
+            
+            # 動画とサムネイルを一緒にアップロード
             gcs_uri = uploader.upload_video(
                 video_path=output_video,
                 title=os.path.basename(output_video),
                 genre=args.genre,
-                channel=args.channel
+                channel=args.channel,
+                thumbnail_path=thumbnail_path
             )
         else:
             logging.info("GCP upload skipped")
@@ -248,7 +254,7 @@ def run_pipeline(args):
         qa = VideoQA()
         is_ok, meta, err = qa.validate_video(output_video)
 
-        if not skip_gcs_upload:  # スキップしない場合にアップロード処理を実行
+        if gcs_upload:
             qa.add_to_spreadsheet(
                 metadata=meta,
                 genre=args.genre,

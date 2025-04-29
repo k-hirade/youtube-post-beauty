@@ -435,7 +435,6 @@ class CosmeNetScraper:
             
             # 既に画像が存在する場合はスキップ
             if os.path.exists(img_path):
-                logger.info(f"画像は既に存在します: {img_path}")
                 # 保存先のパスを製品情報に追加
                 product["local_image_path"] = img_path
                 updated_products.append(product)

@@ -67,7 +67,6 @@ class ReviewGenerator:
         try:
             # 製品の口コミページのURL
             url = f"{self.base_url}/products/{product_id}"
-            logger.info(f"口コミページ取得中: {url}")
             
             # ページを取得
             response = self.session.get(url, timeout=30)
@@ -188,7 +187,6 @@ class ReviewGenerator:
             try:
                 # 口コミが取得できた場合は要約プロンプト、取得できなかった場合はフォールバックプロンプトを使用
                 if reviews:
-                    logger.info(f"口コミ{len(reviews)}件を取得、要約開始")
                     user_prompt = self._get_summary_prompt(product, reviews)
                 else:
                     logger.warning(f"口コミが取得できなかったため、フォールバックを使用")

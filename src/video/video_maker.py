@@ -458,6 +458,23 @@ class VideoMaker:
         
         # メインテキストを描画
         draw.text((x, y), text, font=font, fill=text_color)
+
+    def save_thumbnail(self, channel: str, genre: str, output_path: str) -> str:
+        try:
+            # ブックマーク表示ありのイントロスライドを作成
+            thumbnail_img = self._create_bookmark_intro_slide(channel, genre)
+            
+            # 出力ディレクトリの確認
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            
+            # PNG形式で保存
+            thumbnail_img.save(output_path, "PNG")
+            logger.info(f"サムネイル画像を保存しました: {output_path}")
+            
+            return output_path
+        except Exception as e:
+            logger.error(f"サムネイル作成エラー: {str(e)}")
+            return ""
     
     def calculate_text_width(
         self, 
@@ -1298,12 +1315,6 @@ class VideoMaker:
             str: 作成した動画のパス
         """
         logger.info(f"動画作成開始: {title}")
-        
-        # 出力ファイル名が指定されていない場合は生成
-        if not output_filename:
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            safe_title = ''.join(c if c.isalnum() else '_' for c in title)
-            output_filename = f"{safe_title}_{timestamp}.mp4"
         
         output_path = os.path.join(self.output_dir, output_filename)
         
