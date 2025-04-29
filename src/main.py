@@ -247,7 +247,7 @@ def run_pipeline(args):
                         channel=args.channel
                     )
                     gcs_uri = video_uri
-                    thumbnail_gcs_uri = thumbnail_uri  # thumbnail_gcs_uriに代入
+                    thumbnail_gcs_uri = thumbnail_uri
                     logger.info(f"GCSアップロード完了: 動画={gcs_uri}, サムネイル={thumbnail_gcs_uri}")
                 except Exception as e:
                     logger.error(f"GCSアップロード中にエラーが発生しました: {str(e)}")
@@ -298,19 +298,19 @@ def run_pipeline(args):
             run_id=run_id,
             social_media_results=social_media_results
         )
-        # YouTubeアップロードが成功した場合、公開スケジュールに追加
-        if social_media_results and social_media_results.get("youtube", {}).get("success", False):
-            # 現在の日付から1週間後を公開予定日として設定
-            publish_date = (datetime.now() + timedelta(days=7)).strftime('%Y-%m-%d')
+        # # YouTubeアップロードが成功した場合、公開スケジュールに追加
+        # if social_media_results and social_media_results.get("youtube", {}).get("success", False):
+        #     # 現在の日付から1週間後を公開予定日として設定
+        #     publish_date = (datetime.now() + timedelta(days=7)).strftime('%Y-%m-%d')
             
-            qa.add_publishing_schedule(
-                video_id=1,
-                publish_date=publish_date,
-                platform="YouTube",
-                status="スケジュール済み",
-                assignee="",
-                reminder=True
-            )
+        #     qa.add_publishing_schedule(
+        #         video_id=1,
+        #         publish_date=publish_date,
+        #         platform="YouTube",
+        #         status="スケジュール済み",
+        #         assignee="",
+        #         reminder=True
+        #     )
 
         # 13. 通知
         notifier = Notifier()

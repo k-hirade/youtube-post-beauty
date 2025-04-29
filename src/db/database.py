@@ -38,6 +38,96 @@ class CosmeDatabase:
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row  # 辞書形式で結果を取得
         return conn
+
+    def save_product(self, product: Dict[str, Any]) -> bool:
+        """
+        製品情報をデータベースに保存
+        
+        Args:
+            product: 製品情報辞書
+        
+        Returns:
+            成功したかどうか
+        """
+        try:
+            now = datetime.now().isoformat()
+            conn = self._get_connection()
+            
+            # 製品が既に存在するか確認
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT product_id FROM products WHERE product_id = ?",
+                (product["product_id"],)
+            )
+            exists = cursor.fetchone()
+            
+            if exists:
+                # 既存の場合は更新
+                cursor.execute(
+                    """
+                    UPDATE products
+                    SET genre = ?, channel = ?, name = ?, brand = ?,
+                        image_url = ?, product_url = ?, brand_url = ?, scraped_rank = ?
+                    WHERE product_id = ?
+                    """,
+                    (
+                        product["genre"],
+                        product["channel"],
+                        product["name"],
+                        product["brand"],
+                        product["image_url"],
+                        product.get("product_url", ""),
+                        product.get("brand_url", ""),
+                        product["rank"],
+                        product["product_id"]
+                    )
+                )
+            else:
+                # 新規の場合は挿入
+                cursor.execute(
+                    """
+                    INSERT INTO products (
+                        product_id, genre, channel, name, brand,
+                        image_url, product_url, brand_url, scraped_rank, first_seen
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        product["product_id"],
+                        product["genre"],
+                        product["channel"],
+                        product["name"],
+                        product["brand"],
+                        product["image_url"],
+                        product.get("product_url", ""),
+                        product.get("brand_url", ""),
+                        product["rank"],
+                        now
+                    )
+                )
+            
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            self.logger.error(f"製品保存エラー: {str(e)}")
+            return False
+
+    def save_products(self, products: List[Dict[str, Any]]) -> int:
+        """
+        複数の製品情報を一括保存
+        
+        Args:
+            products: 製品情報辞書のリスト
+        
+        Returns:
+            保存に成功した製品数
+        """
+        success_count = 0
+        for product in products:
+            if self.save_product(product):
+                success_count += 1
+        
+        return success_count
     
     def _init_db(self):
         """データベースの初期化（テーブル作成）"""
@@ -71,6 +161,7 @@ class CosmeDatabase:
                 created_at   DATETIME,
                 status       TEXT,
                 video_gs_uri TEXT,
+                thumbnail_gs_uri TEXT,
                 error_details TEXT
                 );
                 CREATE TABLE IF NOT EXISTS review_cache (
@@ -84,20 +175,29 @@ class CosmeDatabase:
                 
             conn = self._get_connection()
             
+            # テーブル作成
+            conn.executescript(schema_sql)
+            
             # ランキングタイプカラムが存在するか確認
             cursor = conn.cursor()
             cursor.execute("PRAGMA table_info(runs)")
             columns = cursor.fetchall()
             column_names = [column['name'] for column in columns]
             
-            # テーブル作成
-            conn.executescript(schema_sql)
-            
             # ランキングタイプカラムが存在しない場合は追加
             if 'ranking_type' not in column_names:
                 try:
                     conn.execute("ALTER TABLE runs ADD COLUMN ranking_type TEXT DEFAULT '最新'")
                     logger.info("runs テーブルに ranking_type カラムを追加しました")
+                except sqlite3.OperationalError:
+                    # カラムが既に存在する場合は無視
+                    pass
+            
+            # thumbnail_gs_uri カラムが存在しない場合は追加
+            if 'thumbnail_gs_uri' not in column_names:
+                try:
+                    conn.execute("ALTER TABLE runs ADD COLUMN thumbnail_gs_uri TEXT")
+                    logger.info("runs テーブルに thumbnail_gs_uri カラムを追加しました")
                 except sqlite3.OperationalError:
                     # カラムが既に存在する場合は無視
                     pass
@@ -189,23 +289,6 @@ class CosmeDatabase:
         except Exception as e:
             logger.error(f"製品情報追加エラー: {str(e)}")
             return False
-
-    def save_products(self, products: List[Dict[str, Any]]) -> int:
-        """
-        複数の製品情報を一括保存
-        
-        Args:
-            products: 製品情報辞書のリスト
-        
-        Returns:
-            保存に成功した製品数
-        """
-        success_count = 0
-        for product in products:
-            if self.save_product(product):
-                success_count += 1
-        
-        return success_count
     
     def get_products_by_criteria(
         self,
