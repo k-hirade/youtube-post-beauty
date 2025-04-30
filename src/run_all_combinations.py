@@ -51,7 +51,7 @@ RANKING_TYPES = [
 CATEGORIES = [
     "乳液",
     "美容液",
-    "リップ"  # "リップ"はCATEGORY_MAPでは直接対応するものがないかもしれないので注意
+    "リップ"
 ]
 
 def run_main_with_params(channel, ranking_type, genre):
