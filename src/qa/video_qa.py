@@ -216,7 +216,7 @@ class VideoQA:
         genre: str,
         channel: str,
         title: str,
-        ranking_type: str,  # Added ranking_type parameter
+        ranking_type: str,
         gcs_uri: Optional[str] = None,
         qa_status: str = "OK",
         notes: str = "",
@@ -258,16 +258,17 @@ class VideoQA:
                 worksheet = spreadsheet.add_worksheet(
                     title="動画一覧",
                     rows=1000,
-                    cols=25
+                    cols=27
                 )
                 
-                # ヘッダー設定
+                # ヘッダー設定（X関連の2カラムを追加）
                 header = [
                     "動画ID", "タイムスタンプ", "タイトル", "ジャンル", "チャンネル", "ランキングタイプ",
                     "GCS動画URI", "GCSサムネイルURI",
                     "YouTubeアップロード", "YouTube URL", "YouTube 動画ID",
                     "TikTokアップロード", "TikTok URL", 
                     "Instagramアップロード", "Instagram URL",
+                    "Xアップロード", "X URL",
                     "QAステータス", "エラー詳細", "実行ID", "動画時間", 
                     "メタデータ", "備考"
                 ]
@@ -289,6 +290,10 @@ class VideoQA:
             instagram_uploaded = "FALSE"
             instagram_url = ""
             
+            # X情報の取得（追加）
+            x_uploaded = "FALSE"
+            x_url = ""
+            
             # ソーシャルメディア結果の処理
             if social_media_results:
                 # YouTube
@@ -306,6 +311,11 @@ class VideoQA:
                 if social_media_results.get("instagram", {}).get("success", False):
                     instagram_uploaded = "TRUE"
                     instagram_url = social_media_results["instagram"].get("url", "")
+                    
+                # X（追加）
+                if social_media_results.get("x", {}).get("success", False):
+                    x_uploaded = "TRUE"
+                    x_url = social_media_results["x"].get("url", "")
             
             # メタデータをJSON形式に変換
             metadata_json = json.dumps(metadata)
@@ -340,14 +350,14 @@ class VideoQA:
                 logger.error(f"動画ID取得エラー: {str(e)}")
                 video_id = 1
             
-            # データ行作成
+            # データ行作成（X関連の情報を追加）
             row = [
                 str(video_id),  # 動画ID
                 timestamp,
                 title,
                 genre,
                 channel,
-                ranking_type,  # ランキングタイプを追加
+                ranking_type,
                 formatted_gcs_uri,
                 formatted_thumbnail_gcs_uri,
                 youtube_uploaded,
@@ -357,6 +367,8 @@ class VideoQA:
                 tiktok_url,
                 instagram_uploaded,
                 instagram_url,
+                x_uploaded,
+                x_url,
                 qa_status,
                 notes,
                 run_id or '',
