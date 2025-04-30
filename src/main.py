@@ -24,7 +24,9 @@ from src.uploader.gcs_uploader import GCSUploader
 from src.qa.video_qa import VideoQA
 from src.notifier.notifier import Notifier 
 from src.uploader.social_media_poster import SocialMediaPoster
-
+from src.scraper.config_categories import CATEGORY_MAP
+from src.scraper.config_categories import CHANNEL_MAP
+from src.scraper.config_categories import RANKING_TYPE_MAP
 
 # 環境変数読み込み
 from dotenv import load_dotenv
@@ -58,17 +60,15 @@ def parse_args():
     parser = argparse.ArgumentParser(description='アットコスメランキングからショート動画を自動生成')
     
     parser.add_argument('--channel', type=str, default='ドラッグストア',
-                        choices=['デパート', 'ドラッグストア', 'バラエティショップ', 
-                                '化粧品専門店', 'コンビニ', '通販化粧品・コスメ',
-                                '訪問販売', '独立店舗・サロン'],
+                        choices=list(CHANNEL_MAP.keys()),
                         help='購入場所チャンネル')
     
     parser.add_argument('--genre', type=str, default='美容液',
-                        choices=['化粧水', '乳液', '美容液', 'フェイスクリーム', 'クレンジング', 'パック'],
+                        choices=list(CATEGORY_MAP.keys()),
                         help='対象ジャンル')
     
     parser.add_argument('--ranking-type', type=str, default='最新',
-                        choices=['最新', 'お好み'],
+                        choices=list(RANKING_TYPE_MAP.keys()),
                         help='最初に試すランキングの種類')
     
     parser.add_argument('--min-products', type=int, default=10,
@@ -298,7 +298,7 @@ def run_pipeline(args):
             run_id=run_id,
             social_media_results=social_media_results
         )
-        
+
         # # YouTubeアップロードが成功した場合、公開スケジュールに追加
         # if social_media_results and social_media_results.get("youtube", {}).get("success", False):
         #     # 現在の日付から1週間後を公開予定日として設定
