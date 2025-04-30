@@ -22,8 +22,8 @@ from src.review.review_generator import ReviewGenerator
 from src.video.video_maker import VideoMaker
 from src.uploader.gcs_uploader import GCSUploader
 from src.qa.video_qa import VideoQA
-from src.notifier.notifier import Notifier 
-from src.uploader.social_media_poster import SocialMediaPoster
+# from src.notifier.notifier import Notifier 
+# from src.uploader.social_media_poster import SocialMediaPoster
 from src.scraper.config_categories import CATEGORY_MAP
 from src.scraper.config_categories import CHANNEL_MAP
 from src.scraper.config_categories import RANKING_TYPE_MAP
