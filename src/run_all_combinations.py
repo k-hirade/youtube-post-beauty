@@ -1,154 +1,163 @@
 #!/usr/bin/env python3
 """
 @file: run_all_combinations.py
-@desc: 複数の条件でmain.pyを実行するスクリプト
+@desc: 各種組み合わせでmain.pyを実行するスクリプト
+run: python run_all_combinations.py --use-alternative-ranking
 """
 
 import os
-import subprocess
 import sys
-import time
-import logging
+import argparse
+import subprocess
+import itertools
 from datetime import datetime
 
-# ロガー設定
-logger = logging.getLogger(__name__)
+# チャンネル設定
+CHANNEL_MAP = {
+    "ドラッグストア": "ドラッグストア",
+    "コンビニ": "コンビニ",
+    # "デパート": "デパート"
+}
 
-def setup_logging(log_file=None, log_level=logging.INFO):
-    """ロギングの設定"""
-    log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    
-    # ルートロガー設定
-    logging.basicConfig(
-        level=log_level,
-        format=log_format
-    )
-    
-    # ファイルハンドラの追加（指定がある場合）
-    if log_file:
-        # ディレクトリ作成
-        os.makedirs(os.path.dirname(log_file), exist_ok=True)
-        
-        file_handler = logging.FileHandler(log_file)
-        file_handler.setLevel(log_level)
-        file_handler.setFormatter(logging.Formatter(log_format))
-        logging.getLogger().addHandler(file_handler)
+# ランキングタイプ設定
+RANKING_TYPE_MAP = {
+    "最新": "最新",
+    "お好み": "お好み"
+}
 
-# 購入場所チャンネルマッピング
-CHANNELS = [
-    "ドラッグストア",
-    "コンビニ",
-    "デパート"
-]
+# カテゴリー設定
+CATEGORY_MAP = {
+    "乳液": "乳液",
+    "美容液": "美容液",
+    # "リップ": "リップ"
+}
 
-# ランキングタイプマッピング
-RANKING_TYPES = [
-    "最新",
-    "お好み"
-]
+def parse_args():
+    """コマンドライン引数のパース"""
+    parser = argparse.ArgumentParser(description='各種組み合わせでmain.pyを実行するスクリプト')
+    
+    parser.add_argument('--dry-run', action='store_true',
+                        help='実際のコマンドを実行せずに表示のみ')
+    
+    parser.add_argument('--use-alternative-ranking', action='store_true',
+                        help='十分な製品数が集まらない場合、代替ランキングタイプも試す')
+    
+    parser.add_argument('--verbose', '-v', action='store_true',
+                        help='詳細なログを出力')
+    
+    parser.add_argument('--log-dir', type=str, default='data/logs/run_all',
+                        help='ログ出力ディレクトリ')
+    
+    parser.add_argument('--main-script', type=str, default='src/main.py',
+                        help='実行するメインスクリプトのパス')
+    
+    return parser.parse_args()
 
-# カテゴリーマッピング
-CATEGORIES = [
-    "乳液",
-    "美容液",
-    "リップ"
-]
-
-def run_main_with_params(channel, ranking_type, genre):
-    """指定されたパラメータでmain.pyを実行"""
-    command = [
-        "python", "main.py",
-        "--channel", channel,
-        "--ranking-type", ranking_type,
-        "--genre", genre
-        # 他の引数はデフォルト値を使用
-    ]
-    
-    logger.info(f"実行: {' '.join(command)}")
-    
-    try:
-        # サブプロセスとして実行し、出力を取得
-        process = subprocess.Popen(
-            command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True
-        )
-        
-        # リアルタイムで出力を表示
-        while True:
-            output = process.stdout.readline()
-            if output == '' and process.poll() is not None:
-                break
-            if output:
-                logger.info(output.strip())
-        
-        # エラー出力がある場合は表示
-        stderr = process.stderr.read()
-        if stderr:
-            logger.error(stderr)
-        
-        # 終了コードを確認
-        return_code = process.poll()
-        if return_code == 0:
-            logger.info(f"成功: {channel} × {ranking_type} × {genre}")
-            return True
-        else:
-            logger.error(f"失敗: {channel} × {ranking_type} × {genre}, 終了コード: {return_code}")
-            return False
-    
-    except Exception as e:
-        logger.exception(f"エラー: {channel} × {ranking_type} × {genre}, {str(e)}")
-        return False
+def setup_log_directory(log_dir):
+    """ログディレクトリの作成"""
+    os.makedirs(log_dir, exist_ok=True)
+    return log_dir
 
 def main():
-    """すべての組み合わせでmain.pyを実行"""
-    # ロギング設定
+    """メイン関数"""
+    args = parse_args()
+    
+    # ログディレクトリ設定
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    log_file = f"data/logs/combinations_{timestamp}.log"
-    setup_logging(log_file)
+    log_dir = setup_log_directory(args.log_dir)
+    main_log_file = os.path.join(log_dir, f"run_all_{timestamp}.log")
     
-    logger.info("複数条件での実行開始")
+    # 実行回数のカウント
+    total_combinations = len(CHANNEL_MAP) * len(RANKING_TYPE_MAP) * len(CATEGORY_MAP)
+    print(f"実行する組み合わせ数: {total_combinations}")
     
-    # 実行結果を記録
-    results = []
-    
-    # 全ての組み合わせで実行
-    total_combinations = len(CHANNELS) * len(RANKING_TYPES) * len(CATEGORIES)
-    current = 0
-    
-    for channel in CHANNELS:
-        for ranking_type in RANKING_TYPES:
-            for genre in CATEGORIES:
-                current += 1
-                logger.info(f"処理: {current}/{total_combinations} - {channel} × {ranking_type} × {genre}")
+    # ログファイルへの書き込み開始
+    with open(main_log_file, 'w') as log:
+        log.write(f"実行開始: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        log.write(f"全組み合わせ数: {total_combinations}\n")
+        log.write("-" * 80 + "\n")
+        
+        # 全ての組み合わせを生成
+        combinations = list(itertools.product(
+            CHANNEL_MAP.keys(),
+            RANKING_TYPE_MAP.keys(),
+            CATEGORY_MAP.keys()
+        ))
+        
+        # 各組み合わせで実行
+        for i, (channel, ranking_type, genre) in enumerate(combinations, 1):
+            # 進捗表示
+            progress = f"[{i}/{total_combinations}]"
+            combination_str = f"{channel} × {ranking_type} × {genre}"
+            print(f"{progress} 実行: {combination_str}")
+            log.write(f"{progress} 実行: {combination_str}\n")
+            
+            # コマンド生成
+            cmd = [
+                "python", args.main_script,
+                "--channel", channel,
+                "--genre", genre,
+                "--ranking-type", ranking_type
+            ]
+            
+            # オプション引数の追加
+            if args.dry_run:
+                cmd.append("--dry-run")
+            
+            if args.use_alternative_ranking:
+                cmd.append("--use-alternative-ranking")
                 
-                # 実行
-                success = run_main_with_params(channel, ranking_type, genre)
-                
-                # 結果を記録
-                results.append({
-                    "channel": channel,
-                    "ranking_type": ranking_type,
-                    "genre": genre,
-                    "success": success
-                })
-                
-                # 各実行の間に少し待機（サーバー負荷軽減）
-                time.sleep(10)
+            if args.verbose:
+                cmd.append("--verbose")
+            
+            # 個別のログファイル名
+            individual_log_file = os.path.join(
+                log_dir, 
+                f"{timestamp}_{channel}_{ranking_type}_{genre}.log"
+            )
+            cmd.extend(["--log-file", individual_log_file])
+            
+            # コマンドのログ記録
+            cmd_str = " ".join(cmd)
+            log.write(f"コマンド: {cmd_str}\n")
+            
+            # コマンド実行（ドライランモードの場合は表示のみ）
+            if args.dry_run:
+                print(f"  ドライランモード: {cmd_str}")
+                log.write("  ドライランモード: 実行せず\n")
+            else:
+                print(f"  実行中: {cmd_str}")
+                try:
+                    start_time = datetime.now()
+                    result = subprocess.run(
+                        cmd, 
+                        check=False,  # エラーがあっても続行
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True
+                    )
+                    end_time = datetime.now()
+                    duration = (end_time - start_time).total_seconds()
+                    
+                    # 結果をログに記録
+                    status = "成功" if result.returncode == 0 else "失敗"
+                    log.write(f"  結果: {status} (終了コード: {result.returncode})\n")
+                    log.write(f"  所要時間: {duration:.2f}秒\n")
+                    
+                    # エラーがあれば記録
+                    if result.returncode != 0:
+                        log.write(f"  標準出力:\n{result.stdout}\n")
+                        log.write(f"  エラー出力:\n{result.stderr}\n")
+                except Exception as e:
+                    log.write(f"  実行エラー: {str(e)}\n")
+            
+            log.write("-" * 80 + "\n")
+            log.flush()  # バッファをフラッシュして即座に書き込む
+        
+        # 完了ログ
+        log.write(f"全実行完了: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
     
-    # 実行結果のサマリー表示
-    logger.info("\n--- 実行結果サマリー ---")
-    success_count = sum(1 for r in results if r["success"])
-    logger.info(f"成功: {success_count}/{len(results)}")
-    
-    if success_count < len(results):
-        logger.info("\n--- 失敗した実行 ---")
-        for r in results:
-            if not r["success"]:
-                logger.info(f"{r['channel']} × {r['ranking_type']} × {r['genre']}")
-    
-    logger.info("すべての実行が完了しました")
+    print(f"全ての組み合わせの実行が完了しました。ログ: {main_log_file}")
 
 if __name__ == "__main__":
     main()
