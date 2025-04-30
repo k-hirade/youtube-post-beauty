@@ -298,6 +298,7 @@ def run_pipeline(args):
             run_id=run_id,
             social_media_results=social_media_results
         )
+        
         # # YouTubeアップロードが成功した場合、公開スケジュールに追加
         # if social_media_results and social_media_results.get("youtube", {}).get("success", False):
         #     # 現在の日付から1週間後を公開予定日として設定
