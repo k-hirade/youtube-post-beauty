@@ -256,28 +256,28 @@ def run_pipeline(args):
 
         # 11. Social Media Posting
         social_media_results = None
-        if os.environ.get("ENABLE_SOCIAL_MEDIA").lower() == "true":
-            try:
-                social_media_poster = SocialMediaPoster(
-                    enable_youtube=os.environ.get("ENABLE_YOUTUBE_SHORTS", "").lower() == "true",
-                    youtube_client_secrets=os.environ.get("YOUTUBE_CLIENT_SECRETS"),
-                    youtube_token_path=os.environ.get("YOUTUBE_TOKEN"),
-                    target_channel_id=os.environ.get("TARGET_CHANNEL_ID")
-                )
+        # if os.environ.get("ENABLE_SOCIAL_MEDIA").lower() == "true":
+        #     try:
+        #         social_media_poster = SocialMediaPoster(
+        #             enable_youtube=os.environ.get("ENABLE_YOUTUBE_SHORTS", "").lower() == "true",
+        #             youtube_client_secrets=os.environ.get("YOUTUBE_CLIENT_SECRETS"),
+        #             youtube_token_path=os.environ.get("YOUTUBE_TOKEN"),
+        #             target_channel_id=os.environ.get("TARGET_CHANNEL_ID")
+        #         )
                 
-                social_media_results = social_media_poster.post_video(
-                    video_path=output_video,
-                    title=f"{args.channel}で買える{args.genre}ランキング",
-                    description=f"{args.channel}で買える人気{args.genre}のランキングをご紹介します！",
-                    thumbnail_path=thumbnail_path,
-                    tags=[args.genre, "ランキング", "コスメ", args.channel]
-                )
-                logger.info(f"SNS投稿結果: {social_media_results}")
-            except Exception as e:
-                logger.error(f"SNS投稿エラー: {str(e)}")
-                social_media_results = None
-        else:
-            logger.info("Social media posting skipped")
+        #         social_media_results = social_media_poster.post_video(
+        #             video_path=output_video,
+        #             title=f"{args.channel}で買える{args.genre}ランキング",
+        #             description=f"{args.channel}で買える人気{args.genre}のランキングをご紹介します！",
+        #             thumbnail_path=thumbnail_path,
+        #             tags=[args.genre, "ランキング", "コスメ", args.channel]
+        #         )
+        #         logger.info(f"SNS投稿結果: {social_media_results}")
+        #     except Exception as e:
+        #         logger.error(f"SNS投稿エラー: {str(e)}")
+        #         social_media_results = None
+        # else:
+        #     logger.info("Social media posting skipped")
 
         # 12. QA ＋ スプレッドシート登録
         qa = VideoQA()
