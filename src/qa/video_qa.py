@@ -210,6 +210,59 @@ class VideoQA:
             logger.error(f"動画検証エラー: {str(e)}")
             return False, {}, f"検証処理エラー: {str(e)}"
 
+    # ハッシュタグを生成する新しいヘルパー関数
+    def _generate_hashtags(self, genre: str, channel: str, ranking_type: str) -> str:
+        """
+        動画の概要欄用のハッシュタグを生成
+        
+        Args:
+            genre: 製品ジャンル
+            channel: 購入場所チャンネル
+            ranking_type: ランキングタイプ
+            
+        Returns:
+            ハッシュタグ文字列
+        """
+        # 定型ハッシュタグ（7個）
+        standard_tags = [
+            "#コスメ",
+            "#美容",
+            "#スキンケア",
+            "#ランキング",
+            "#おすすめ",
+            "#プチプラ",
+            "#縦型動画"
+        ]
+
+
+        if ranking_type == "お好み":
+            ranking_type == "人気"
+        
+        # 動的ハッシュタグ（3個）
+        dynamic_tags = [
+            f"#{genre}",
+            f"#{ranking_type}ランキング",
+            f"#{channel}"
+        ]
+        
+        # 全てのハッシュタグを結合
+        all_tags = standard_tags + dynamic_tags
+        return " ".join(all_tags)
+
+    # タイトルを新しいフォーマットに変換するヘルパー関数
+    def _format_title(self, channel: str, genre: str) -> str:
+        """
+        動画タイトルを指定のフォーマットで生成
+        
+        Args:
+            channel: 購入場所チャンネル
+            genre: 製品ジャンル
+            
+        Returns:
+            フォーマット済みタイトル
+        """
+        return f"一度はマジで使ってみて欲しい{channel}で買える神{genre}7選"
+
     def add_to_spreadsheet(
         self,
         metadata: Dict[str, Any],
@@ -258,19 +311,19 @@ class VideoQA:
                 worksheet = spreadsheet.add_worksheet(
                     title="動画一覧",
                     rows=1000,
-                    cols=27
+                    cols=28
                 )
                 
-                # ヘッダー設定（X関連の2カラムを追加）
+                # ヘッダー設定
                 header = [
-                    "動画ID", "タイムスタンプ", "タイトル", "ジャンル", "チャンネル", "ランキングタイプ",
+                    "動画ID", "タイムスタンプ", "タイトル", "概要欄", "ジャンル", "チャンネル", "ランキングタイプ",
                     "GCS動画URI", "GCSサムネイルURI",
                     "YouTubeアップロード", "YouTube URL", "YouTube 動画ID",
                     "TikTokアップロード", "TikTok URL", 
                     "Instagramアップロード", "Instagram URL",
                     "Xアップロード", "X URL",
                     "QAステータス", "エラー詳細", "実行ID", "動画時間", 
-                    "メタデータ", "備考"
+                    "メタデータ", "備考", 
                 ]
                 worksheet.append_row(header)
             
@@ -290,7 +343,7 @@ class VideoQA:
             instagram_uploaded = "FALSE"
             instagram_url = ""
             
-            # X情報の取得（追加）
+            # X情報の取得
             x_uploaded = "FALSE"
             x_url = ""
             
@@ -312,7 +365,7 @@ class VideoQA:
                     instagram_uploaded = "TRUE"
                     instagram_url = social_media_results["instagram"].get("url", "")
                     
-                # X（追加）
+                # X
                 if social_media_results.get("x", {}).get("success", False):
                     x_uploaded = "TRUE"
                     x_url = social_media_results["x"].get("url", "")
@@ -350,11 +403,18 @@ class VideoQA:
                 logger.error(f"動画ID取得エラー: {str(e)}")
                 video_id = 1
             
-            # データ行作成（X関連の情報を追加）
+            # 新しいタイトルフォーマットを適用
+            formatted_title = self._format_title(channel, genre)
+            
+            # 概要欄のハッシュタグを生成
+            description_hashtags = self._generate_hashtags(genre, channel, ranking_type)
+            
+            # データ行作成（概要欄カラムを追加）
             row = [
                 str(video_id),  # 動画ID
                 timestamp,
-                title,
+                formatted_title,
+                description_hashtags,
                 genre,
                 channel,
                 ranking_type,
@@ -374,13 +434,13 @@ class VideoQA:
                 run_id or '',
                 f"{metadata.get('duration', 0):.2f}",
                 metadata_json,
-                ""  # 備考
+                "",  # 備考
             ]
 
             try:
                 # スプレッドシートに追加
                 response = worksheet.append_row(row)
-                logger.info(f"スプレッドシートに追加成功: {title}, 動画ID: {video_id}")
+                logger.info(f"スプレッドシートに追加成功: {formatted_title}, 動画ID: {video_id}")
 
             except Exception as sheet_error:
                 logger.error(f"スプレッドシート行追加エラー: {type(sheet_error).__name__}: {str(sheet_error)}")
