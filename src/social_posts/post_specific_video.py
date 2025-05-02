@@ -10,7 +10,7 @@ import logging
 import argparse
 from typing import Dict, List, Optional, Any
 
-from social_posts.social_media_scheduler import SocialMediaScheduler
+from social_media_scheduler import SocialMediaScheduler
 
 def setup_logging(log_file: Optional[str] = None, log_level: int = logging.INFO):
     """ロギングの設定"""

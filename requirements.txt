@@ -38,3 +38,5 @@ slack-sdk>=3.11.2      # Slack API
 
 gspread
 google-api-python-client
+
+tweepy

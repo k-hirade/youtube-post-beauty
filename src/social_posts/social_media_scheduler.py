@@ -18,10 +18,10 @@ import gspread
 from google.oauth2.service_account import Credentials
 from google.cloud import storage
 
-from social_posts.tiktok_poster import TikTokPoster
-from social_posts.instagram_poster import InstagramPoster
-from social_posts.twitter_poster import TwitterPoster
-from social_posts.youtube_poster import YouTubePoster
+from tiktok_poster import TikTokPoster
+from instagram_poster import InstagramPoster
+from twitter_poster import TwitterPoster
+from youtube_poster import YouTubePoster
 
 # 環境変数読み込み
 from dotenv import load_dotenv
