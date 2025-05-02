@@ -18,7 +18,6 @@ import gspread
 from google.oauth2.service_account import Credentials
 from google.cloud import storage
 
-# 各ソーシャルメディア投稿モジュールをインポート
 from social_posts.tiktok_poster import TikTokPoster
 from social_posts.instagram_poster import InstagramPoster
 from social_posts.twitter_poster import TwitterPoster
@@ -692,20 +691,20 @@ class SocialMediaScheduler:
         """
         results = {}
         
-        # YouTubeに投稿
-        if "youtube" in self.platforms:
+        # YouTubeに投稿（環境変数がtrueの場合のみ）
+        if "youtube" in self.platforms and os.environ.get("ENABLE_YOUTUBE_SHORTS", "false").lower() == "true":
             results["youtube"] = self.post_to_youtube(video)
         
-        # TikTokに投稿
-        if "tiktok" in self.platforms:
+        # TikTokに投稿（環境変数がtrueの場合のみ）
+        if "tiktok" in self.platforms and os.environ.get("ENABLE_TIKTOK_SHORTS", "false").lower() == "true":
             results["tiktok"] = self.post_to_tiktok(video)
         
-        # Instagramに投稿
-        if "instagram" in self.platforms:
+        # Instagramに投稿（環境変数がtrueの場合のみ）
+        if "instagram" in self.platforms and os.environ.get("ENABLE_INSTAGRAM_SHORTS", "false").lower() == "true":
             results["instagram"] = self.post_to_instagram(video)
         
-        # Twitterに投稿
-        if "twitter" in self.platforms:
+        # Twitterに投稿（環境変数がtrueの場合のみ）
+        if "twitter" in self.platforms and os.environ.get("ENABLE_TWITTER_SHORTS", "false").lower() == "true":
             results["twitter"] = self.post_to_twitter(video)
         
         return results
