@@ -40,7 +40,7 @@ class InstagramPoster:
         self.app_secret = app_secret or os.environ.get("FACEBOOK_APP_SECRET")
         
         # APIエンドポイント
-        self.api_base_url = "https://graph.facebook.com/v17.0"
+        self.api_base_url = "https://graph.facebook.com/v22.0"
         
         # トークンの有効期限確認
         self.check_and_refresh_token()
