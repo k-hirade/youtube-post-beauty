@@ -694,18 +694,26 @@ class SocialMediaScheduler:
         # YouTubeに投稿（環境変数がtrueの場合のみ）
         if "youtube" in self.platforms and os.environ.get("ENABLE_YOUTUBE_SHORTS", "false").lower() == "true":
             results["youtube"] = self.post_to_youtube(video)
+        else:
+            logging.info("Youtube投稿をスキップ")
         
         # TikTokに投稿（環境変数がtrueの場合のみ）
         if "tiktok" in self.platforms and os.environ.get("ENABLE_TIKTOK_SHORTS", "false").lower() == "true":
             results["tiktok"] = self.post_to_tiktok(video)
+        else:
+            logging.info("Tiktok投稿をスキップ")
         
         # Instagramに投稿（環境変数がtrueの場合のみ）
         if "instagram" in self.platforms and os.environ.get("ENABLE_INSTAGRAM_SHORTS", "false").lower() == "true":
             results["instagram"] = self.post_to_instagram(video)
+        else:
+            logging.info("Instagram投稿をスキップ")
         
         # Twitterに投稿（環境変数がtrueの場合のみ）
         if "twitter" in self.platforms and os.environ.get("ENABLE_TWITTER_SHORTS", "false").lower() == "true":
             results["twitter"] = self.post_to_twitter(video)
+        else:
+            logging.info("Twitter投稿をスキップ")
         
         return results
     

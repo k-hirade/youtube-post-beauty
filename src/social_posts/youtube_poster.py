@@ -206,11 +206,12 @@ class YouTubePoster:
             # 動画アップロードリクエスト
             logger.info(f"YouTube動画アップロード開始: {title}")
             upload_request = self.service.videos().insert(
-                part=",".join(body.keys()),
+                part="snippet,status",
                 body=body,
-                media_body=media
+                media_body=media,
+                notifySubscribers=notify_subscribers 
             )
-            
+                        
             # アップロード実行（チャンクごとに進捗を報告）
             response = None
             retries = 0
