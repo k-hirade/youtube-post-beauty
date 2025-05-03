@@ -164,12 +164,9 @@ class SocialMediaScheduler:
             # 全てのデータを取得
             all_data = worksheet.get_all_records()
             
-            # ヘッダーの取得
-            headers = worksheet.row_values(1)
-            
             # 必要なカラムのインデックスを取得
             required_columns = [
-                "動画ID", "タイトル", "GCS動画URI", "GCSサムネイルURI"
+                "動画ID", "タイトル", "概要欄", "GCS動画URI", "GCSサムネイルURI"
             ]
             
             # プラットフォームごとのカラムを追加
@@ -215,6 +212,7 @@ class SocialMediaScheduler:
                     video_info = {
                         "video_id": int(row.get("動画ID", 0)),
                         "title": row.get("タイトル", ""),
+                        "description": row.get("概要欄", ""),
                         "video_uri": row.get("GCS動画URI", ""),
                         "thumbnail_uri": row.get("GCSサムネイルURI", ""),
                         "row_index": all_data.index(row) + 2  # 1-based indexing + header row
@@ -451,8 +449,8 @@ class SocialMediaScheduler:
             logger.info(f"YouTubeに投稿開始: 動画ID {video_id}")
             
             # タイトルと説明文を設定
-            title = video["title"]
-            description = f"{title}\n\n#コスメ #ランキング #ショート"
+            title = video["title"] 
+            description = video.get("description", f"コスメ #ランキング #ショート")
             
             result = self.youtube_poster.post_video(
                 video_path=local_video_path,
@@ -583,12 +581,15 @@ class SocialMediaScheduler:
             thumbnail_path = None
             if video.get("thumbnail_uri"):
                 thumbnail_path = self.download_thumbnail_from_gcs(video["thumbnail_uri"], video_id)
+
+            title = video['title']
+            description = video.get("description", f"#コスメ #ランキング #ショート")
             
             # Instagramに投稿
             logger.info(f"Instagramに投稿開始: 動画ID {video_id}")
             result = self.instagram_poster.post_video(
                 video_path=local_video_path,
-                caption=f"{video['title']} #コスメ #ランキング",
+                caption=f"{title} {description}",
                 thumbnail_path=thumbnail_path
             )
             
@@ -646,12 +647,15 @@ class SocialMediaScheduler:
             if not local_video_path:
                 logger.error(f"動画ID {video_id} のダウンロードに失敗しました")
                 return {"success": False, "error": "動画ダウンロード失敗"}
+
+            title = video["title"] 
+            description = video.get("description", f"コスメ #ランキング #ショート")
             
             # Twitterに投稿
             logger.info(f"Twitterに投稿開始: 動画ID {video_id}")
             result = self.twitter_poster.post_video(
                 video_path=local_video_path,
-                text=f"{video['title']} #コスメ #ランキング"
+                text=f"{title} {description}"
             )
             
             # 投稿成功した場合はスプレッドシートを更新

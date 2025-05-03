@@ -220,14 +220,12 @@ class InstagramPoster:
                         container_response = requests.post(
                             container_url, 
                             params=container_params,
-                            files=files
                         )
                 else:
                     # サムネイルなしでリクエスト送信
                     container_response = requests.post(
                         container_url, 
                         params=container_params,
-                        files=files
                     )
             
             if container_response.status_code != 200:
