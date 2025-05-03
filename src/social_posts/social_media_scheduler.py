@@ -384,7 +384,7 @@ class SocialMediaScheduler:
             
             if platform == "youtube":
                 status_col = headers.index("YouTubeアップロード") + 1
-                url_col = headers.index("YouTubeURL") + 1
+                url_col = headers.index("YouTube URL") + 1
             elif platform == "tiktok":
                 status_col = headers.index("TikTokアップロード") + 1
                 url_col = headers.index("TikTok URL") + 1
