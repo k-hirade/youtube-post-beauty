@@ -450,7 +450,7 @@ class SocialMediaScheduler:
             
             # タイトルと説明文を設定
             title = video["title"] 
-            description = video.get("description", f"コスメ #ランキング #ショート")
+            description = video.get("description", f"#コスメ #ランキング #ショート")
             
             result = self.youtube_poster.post_video(
                 video_path=local_video_path,
@@ -649,7 +649,7 @@ class SocialMediaScheduler:
                 return {"success": False, "error": "動画ダウンロード失敗"}
 
             title = video["title"] 
-            description = video.get("description", f"コスメ #ランキング #ショート")
+            description = video.get("description", f"#コスメ #ランキング #ショート")
             
             # Twitterに投稿
             logger.info(f"Twitterに投稿開始: 動画ID {video_id}")
