@@ -53,8 +53,10 @@ class InstagramPoster:
         gs:// または https://storage.cloud.google.com/… を署名付き URL に変換
         """
         PREFIX = "https://storage.cloud.google.com/"
-        if gcs_path.startswith(PREFIX):
-            bucket_name, blob_name = gcs_path[len(PREFIX):].split("/", 1)
+        if gcs_path.startswith("gs://"):
+            bucket_name, blob_name = gcs_path[5:].split("/", 1)
+        elif gcs_path.startswith("https://storage.cloud.google.com/"):
+            bucket_name, blob_name = gcs_path[33:].split("/", 1)
         else:
             raise ValueError("GCS パス形式が不正です")
 
@@ -235,30 +237,14 @@ class InstagramPoster:
                 container_params["user_tags"] = json.dumps(user_tags)
             
             files = {}
-            
-            # 動画ファイルをマルチパートフォームでアップロード
-            with open(video_path, "rb") as video_file:
-                files["video_file"] = video_file
-                
-                # サムネイルがある場合
-                if thumbnail_path and os.path.exists(thumbnail_path):
-                    with open(thumbnail_path, "rb") as thumb_file:
-                        files["thumb_file"] = thumb_file
-                        
-                        # リクエスト送信
-                        container_response = requests.post(
-                            container_url, 
-                            data=container_params,
-                            params=container_params,
-                        )
-                else:
-                    # サムネイルなしでリクエスト送信
-                    container_response = requests.post(
-                        container_url, 
-                        data=container_params,
-                        params=container_params,
-                    )
-            
+
+            # リクエスト送信  
+            container_response = requests.post(
+                container_url, 
+                data=container_params,
+                # params=container_params,
+            )
+
             if container_response.status_code != 200:
                 logger.error(f"Instagramコンテナ作成エラー: {container_response.status_code} {container_response.text}")
                 return {

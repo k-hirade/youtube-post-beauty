@@ -222,7 +222,7 @@ class SocialMediaScheduler:
                     for platform in self.platforms:
                         if platform == "youtube":
                             video_info["youtube_uploaded"] = row.get("YouTubeアップロード", "").upper() == "TRUE"
-                            video_info["youtube_url"] = row.get("YouTubeURL", "")
+                            video_info["youtube_url"] = row.get("YouTube URL", "")
                         elif platform == "tiktok":
                             video_info["tiktok_uploaded"] = row.get("TikTokアップロード", "").upper() == "TRUE"
                             video_info["tiktok_url"] = row.get("TikTok URL", "")
