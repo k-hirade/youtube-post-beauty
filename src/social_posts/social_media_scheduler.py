@@ -588,7 +588,7 @@ class SocialMediaScheduler:
             # Instagramに投稿
             logger.info(f"Instagramに投稿開始: 動画ID {video_id}")
             result = self.instagram_poster.post_video(
-                video_path=local_video_path,
+                video_path=video["video_uri"],
                 caption=f"{title} {description}",
                 thumbnail_path=thumbnail_path
             )

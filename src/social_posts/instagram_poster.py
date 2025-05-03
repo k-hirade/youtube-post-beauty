@@ -9,7 +9,8 @@ import json
 import time
 import requests
 from typing import Dict, List, Optional, Any
-from datetime import datetime
+from google.cloud import storage
+from datetime import timedelta
 
 # ロガー設定
 logger = logging.getLogger(__name__)
@@ -46,7 +47,39 @@ class InstagramPoster:
         self.check_and_refresh_token()
         
         logger.info("Instagram投稿モジュール初期化完了")
-    
+
+    def _generate_gcs_signed_url(self, gcs_path: str, expires: int = 7200) -> str:
+        """
+        gs:// または https://storage.cloud.google.com/… を署名付き URL に変換
+        """
+        PREFIX = "https://storage.cloud.google.com/"
+        if gcs_path.startswith(PREFIX):
+            bucket_name, blob_name = gcs_path[len(PREFIX):].split("/", 1)
+        else:
+            raise ValueError("GCS パス形式が不正です")
+
+        client = storage.Client()
+        bucket = client.bucket(bucket_name)
+        blob = bucket.blob(blob_name)
+
+        return blob.generate_signed_url(expiration=timedelta(seconds=expires),
+                                        method="GET",
+                                        version="v4")
+
+    def _wait_container_ready(self, container_id, timeout=600, interval=10):
+        for _ in range(timeout // interval):
+            r = requests.get(
+                f"{self.api_base_url}/{container_id}",
+                params={"fields": "status_code", "access_token": self.access_token}
+            )
+            status = r.json().get("status_code")
+            if status == "FINISHED":
+                return True
+            if status == "ERROR":
+                raise RuntimeError("Video processing failed on Instagram")
+            time.sleep(interval)
+        raise TimeoutError("Container processing timed out")
+
     def check_and_refresh_token(self) -> bool:
         """
         アクセストークンの有効期限を確認し、必要に応じて更新
@@ -181,9 +214,10 @@ class InstagramPoster:
             container_url = f"{self.api_base_url}/{self.user_id}/media"
             
             # リクエストパラメータ
+            signed_url = self._generate_gcs_signed_url(video_path, expires=7200) 
             container_params = {
                 "media_type": "REELS",  # REELSとして投稿
-                "video_url": f"file://{os.path.abspath(video_path)}",  # ファイルパスをURLに変換
+                "video_url": signed_url,
                 "caption": caption,
                 "access_token": self.access_token
             }
@@ -200,11 +234,6 @@ class InstagramPoster:
             if user_tags:
                 container_params["user_tags"] = json.dumps(user_tags)
             
-            # アップロードリクエスト
-            # 注意: 実際の実装ではマルチパートフォームデータとしてファイルをアップロードする必要があります
-            # この例では簡略化のためにURLを指定していますが、実際にはファイルをアップロードする実装が必要です
-            
-            # 以下、実際のアップロード処理
             files = {}
             
             # 動画ファイルをマルチパートフォームでアップロード
@@ -219,12 +248,14 @@ class InstagramPoster:
                         # リクエスト送信
                         container_response = requests.post(
                             container_url, 
+                            data=container_params,
                             params=container_params,
                         )
                 else:
                     # サムネイルなしでリクエスト送信
                     container_response = requests.post(
                         container_url, 
+                        data=container_params,
                         params=container_params,
                     )
             
@@ -239,6 +270,7 @@ class InstagramPoster:
             
             # コンテナIDを取得
             container_id = container_result.get("id")
+            self._wait_container_ready(container_id)
             
             if not container_id:
                 logger.error(f"Instagramコンテナ識別子取得エラー: {container_result}")
@@ -471,6 +503,7 @@ class InstagramPoster:
             
             # コンテナIDを取得
             container_id = container_result.get("id")
+            self._wait_container_ready(container_id)
             
             if not container_id:
                 logger.error(f"Instagramストーリーコンテナ識別子取得エラー: {container_result}")
@@ -573,6 +606,7 @@ class InstagramPoster:
             
             # コンテナIDを取得
             container_id = container_result.get("id")
+            self._wait_container_ready(container_id)
             
             if not container_id:
                 logger.error(f"InstagramコンテナURL識別子取得エラー: {container_result}")
