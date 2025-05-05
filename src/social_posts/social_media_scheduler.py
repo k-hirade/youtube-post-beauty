@@ -583,7 +583,7 @@ class SocialMediaScheduler:
                 thumbnail_path = self.download_thumbnail_from_gcs(video["thumbnail_uri"], video_id)
 
             title = video['title']
-            description = video[]
+            description = video["description"]
             
             # Instagramに投稿
             logger.info(f"Instagramに投稿開始: 動画ID {video_id}")
@@ -649,7 +649,7 @@ class SocialMediaScheduler:
                 return {"success": False, "error": "動画ダウンロード失敗"}
 
             title = video["title"] 
-            description = video[]
+            description = video["description"]
             
             # Twitterに投稿
             logger.info(f"Twitterに投稿開始: 動画ID {video_id}")
