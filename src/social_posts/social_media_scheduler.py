@@ -144,13 +144,14 @@ class SocialMediaScheduler:
             logger.error(f"Google Sheets初期化エラー: {str(e)}")
             raise
     
-    def load_pending_videos(self, limit: int = 20) -> List[Dict[str, Any]]:
+    def load_pending_videos(self, limit: int = 1) -> List[Dict[str, Any]]:
         """
         投稿されていない動画をスプレッドシートから読み込む
+        動画IDの若い順から、いずれかのプラットフォームが未投稿の動画を取得
         
         Args:
             limit: 読み込む最大動画数
-            
+                
         Returns:
             投稿対象動画のリスト
         """
@@ -185,8 +186,11 @@ class SocialMediaScheduler:
             # 結果リスト
             pending_videos = []
             
-            # 未投稿の動画を探す（動画IDの昇順）
-            for row in sorted(all_data, key=lambda x: int(x.get("動画ID", 0))):
+            # 動画IDの昇順にソート
+            sorted_data = sorted(all_data, key=lambda x: int(x.get("動画ID", 0)))
+            
+            # 未投稿の動画を探す
+            for row in sorted_data:
                 # いずれかのプラットフォームに未投稿のものを探す
                 any_pending = False
                 
@@ -730,67 +734,60 @@ class SocialMediaScheduler:
         """
         logger.info(f"投稿ジョブ開始: {time_slot}")
         
-        # 投稿対象動画の取得
-        videos = self.load_pending_videos(limit=5)  # 各時間枠で最大5本
+        # 投稿対象動画の取得 - 1本だけ投稿する
+        videos = self.load_pending_videos(limit=1)
         
         if not videos:
             logger.info(f"投稿対象の動画がありません: {time_slot}")
             return
         
-        # 各動画を15分間隔で投稿
-        for i, video in enumerate(videos):
-            try:
-                logger.info(f"[{time_slot}] 投稿処理 {i+1}/{len(videos)}: 動画ID {video['video_id']}")
-                
-                # 全プラットフォームに投稿
-                results = self.post_to_all_platforms(video)
-                
-                # 結果をログに記録
-                logger.info(f"投稿結果: {json.dumps(results)}")
-                
-                # 投稿履歴に追加
-                self.post_history[video["video_id"]] = {
-                    "time": datetime.now().isoformat(),
-                    "time_slot": time_slot,
-                    "results": results
-                }
-                
-                # 次の動画までの待機（最後の動画以外）
-                if i < len(videos) - 1:
-                    wait_seconds = 15 * 60  # 15分
-                    logger.info(f"次の投稿まで {wait_seconds} 秒待機")
-                    time.sleep(wait_seconds)
-                
-            except Exception as e:
-                logger.error(f"動画ID {video['video_id']} の投稿処理中にエラーが発生: {str(e)}")
-                continue
+        # 1本の動画を処理
+        video = videos[0]
+        try:
+            logger.info(f"[{time_slot}] 投稿処理: 動画ID {video['video_id']}")
+            
+            # 全プラットフォームに投稿
+            results = self.post_to_all_platforms(video)
+            
+            # 結果をログに記録
+            logger.info(f"投稿結果: {json.dumps(results)}")
+            
+            # 投稿履歴に追加
+            self.post_history[video["video_id"]] = {
+                "time": datetime.now().isoformat(),
+                "time_slot": time_slot,
+                "results": results
+            }
+            
+        except Exception as e:
+            logger.error(f"動画ID {video['video_id']} の投稿処理中にエラーが発生: {str(e)}")
         
         logger.info(f"投稿ジョブ完了: {time_slot}")
     
     def configure_schedule(self):
         """スケジュール設定"""
-        # 朝: 6:00から7:00まで15分ごと
+        # 朝: 6:00から7:00まで15分ごとに1本
         schedule.every().day.at("06:00").do(self.process_posting_job, time_slot="morning")
         schedule.every().day.at("06:15").do(self.process_posting_job, time_slot="morning")
         schedule.every().day.at("06:30").do(self.process_posting_job, time_slot="morning")
         schedule.every().day.at("06:45").do(self.process_posting_job, time_slot="morning")
         schedule.every().day.at("07:00").do(self.process_posting_job, time_slot="morning")
         
-        # 昼: 11:00から12:00まで15分ごと
+        # 昼: 11:00から12:00まで15分ごとに1本
         schedule.every().day.at("11:00").do(self.process_posting_job, time_slot="noon")
         schedule.every().day.at("11:15").do(self.process_posting_job, time_slot="noon")
         schedule.every().day.at("11:30").do(self.process_posting_job, time_slot="noon")
         schedule.every().day.at("11:45").do(self.process_posting_job, time_slot="noon")
         schedule.every().day.at("12:00").do(self.process_posting_job, time_slot="noon")
         
-        # 夕方: 16:00から17:00まで15分ごと
+        # 夕方: 16:00から17:00まで15分ごとに1本
         schedule.every().day.at("16:00").do(self.process_posting_job, time_slot="afternoon")
         schedule.every().day.at("16:15").do(self.process_posting_job, time_slot="afternoon")
         schedule.every().day.at("16:30").do(self.process_posting_job, time_slot="afternoon")
         schedule.every().day.at("16:45").do(self.process_posting_job, time_slot="afternoon")
         schedule.every().day.at("17:00").do(self.process_posting_job, time_slot="afternoon")
         
-        # 夜: 19:00から20:00まで15分ごと
+        # 夜: 19:00から20:00まで15分ごとに1本
         schedule.every().day.at("19:00").do(self.process_posting_job, time_slot="evening")
         schedule.every().day.at("19:15").do(self.process_posting_job, time_slot="evening")
         schedule.every().day.at("19:30").do(self.process_posting_job, time_slot="evening")
