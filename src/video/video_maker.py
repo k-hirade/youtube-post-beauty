@@ -332,6 +332,24 @@ class VideoMaker:
             return base - 50          # やや小
         else:
             return base - 70          # もっと小
+
+    def _brand_font_size(self, text_len: int) -> int:
+        """
+        ブランド名の文字数でサイズを段階分け
+        """
+        base = self.BRAND_FONT_SIZE + 70  # 元のベースサイズ
+        if text_len <= 4:
+            return base + 20          # 少ない ⇒ 大
+        elif text_len <= 6:
+            return base              # 標準
+        elif text_len <= 8:
+            return base - 10           # やや小
+        elif text_len <= 10:
+            return base - 20          # 小
+        elif text_len <= 12:
+            return base - 30          # 小
+        else:
+            return base - 40          # もっと小
         
     def _calc_name_block_bottom(self, start_y: int, lines: list[str]) -> int:
         """商品名ブロックの下端 Y 座標を返す"""
@@ -647,7 +665,8 @@ class VideoMaker:
         # 表示位置の調整 - ブランド名を追加したので開始位置を上にシフト
         start_y = 350 - (len(name_lines)-1)*40  # 以前は400
         # ブランド名のためのフォントサイズと空間
-        brand_font_size = self.BRAND_FONT_SIZE + 80  # 少し大きくしておく
+        brand_text_len = len(brand_name.replace(" ", ""))
+        brand_font_size = self._brand_font_size(brand_text_len)  # サイズを動的に設定
         brand_space = 20
         # ブランド名のフォント
         brand_font = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY, brand_font_size)
@@ -986,7 +1005,8 @@ class VideoMaker:
             # 商品名の準備
             name_lines = self._prepare_product_name(product.get("name"), brand_name)
             start_y = 350 - (len(name_lines)-1)*40
-            brand_font_size = self.BRAND_FONT_SIZE + 80
+            brand_text_len = len(brand_name.replace(" ", ""))
+            brand_font_size = self._brand_font_size(brand_text_len)
             brand_space = 20
             empty_height = 20
             name_block_bottom = self._calc_name_block_bottom(start_y + brand_font_size + brand_space, name_lines)
