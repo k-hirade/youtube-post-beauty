@@ -143,7 +143,13 @@ def run_pipeline(args):
         # 4. 製品情報をデータベースに保存
         success_count = db.save_products(products)
         logger.info(f"製品保存完了: {success_count}/{len(products)}個")
-        
+
+        if len(products) < args.min_products:
+            logger.error(f"収集された製品数が最小閾値未満です: {len(products)}/{args.min_products}")
+            logger.info("処理を中断し、次の組み合わせに進みます")
+            db.update_run_status(run_id, "insufficient_products")
+            return False
+                
         # 5. セレクターによる製品選定
         selector = ProductSelector(
             min_products=args.min_products,
