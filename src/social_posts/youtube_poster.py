@@ -134,7 +134,7 @@ class YouTubePoster:
         description: str = "",
         tags: Optional[List[str]] = None,
         category_id: str = "22",  # 22=People & Blogs
-        privacy_status: str = "unlisted", # to modify
+        privacy_status: str = "public", # to modify
         made_for_kids: bool = False,
         thumbnail_path: Optional[str] = None,
         notify_subscribers: bool = True

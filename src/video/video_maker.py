@@ -742,9 +742,9 @@ class VideoMaker:
         heavy150  = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY, 150)
         heavy130  = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY, 130)
         heavy110  = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY, 110)
+        heavy100   = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY, 100)
         heavy90  = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY, 90)
         heavy80   = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY, 80)
-        heavy70   = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY, 70)
 
         # ① 一度は
         w = self.calculate_text_width("一度は", heavy130, ImageDraw.Draw(bg))
@@ -813,7 +813,7 @@ class VideoMaker:
         text = f"神{genre}"
         text_len_shohin = len(text)  
         if text_len_shohin >= 10:
-            heavy_font = heavy110
+            heavy_font = heavy100
         elif text_len_shohin >= 6:
             heavy_font = heavy130
         else: 
@@ -984,7 +984,7 @@ class VideoMaker:
             # 商品名の準備
             name_lines = self._prepare_product_name(product.get("name"), brand_name)
             start_y = 350 - (len(name_lines)-1)*40
-            brand_font_size = self.BRAND_FONT_SIZE + 100
+            brand_font_size = self.BRAND_FONT_SIZE + 70
             brand_space = 20
             empty_height = 20
             name_block_bottom = self._calc_name_block_bottom(start_y + brand_font_size + brand_space, name_lines)

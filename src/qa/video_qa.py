@@ -236,7 +236,7 @@ class VideoQA:
 
 
         if ranking_type == "お好み":
-            ranking_type == "人気"
+            ranking_type = "人気"
         
         # 動的ハッシュタグ（3個）
         dynamic_tags = [
