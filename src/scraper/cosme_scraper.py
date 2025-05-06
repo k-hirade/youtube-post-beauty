@@ -315,17 +315,18 @@ class CosmeNetScraper:
             target_categories = self.CATEGORY_MAP.get(g, [])
             logger.debug(f"対象カテゴリー キーワード: {target_categories}")
             
-            # 製品カテゴリとターゲットカテゴリを比較
+            # 製品カテゴリとターゲットカテゴリを比較（完全一致のみ）
             for prod_cat in product_categories:
                 for target_cat in target_categories:
-                    if target_cat in prod_cat or prod_cat in target_cat:
-                        logger.debug(f"カテゴリーマッチ: '{prod_cat}' と '{target_cat}'")
+                    # 完全一致のみを許可
+                    if prod_cat == target_cat:
+                        logger.debug(f"完全一致: '{prod_cat}' と '{target_cat}'")
                         return True
-                        
-            # 直接ジャンル名とカテゴリ名のマッチング（バックアップ）
+            
+            # 直接ジャンル名との完全一致もチェック（バックアップ）
             for prod_cat in product_categories:
-                if g in prod_cat or prod_cat in g:
-                    logger.debug(f"直接マッチ: '{prod_cat}' と '{g}'")
+                if prod_cat == g:
+                    logger.debug(f"直接完全一致: '{prod_cat}' と '{g}'")
                     return True
         
         logger.debug(f"製品: {product.get('name')} はジャンル {genre} に一致しませんでした")
