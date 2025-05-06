@@ -495,7 +495,7 @@ class CosmeNetScraper:
         """
         collected_products = []
         if ranking_type == "お好み":
-            max_pages = 500
+            max_pages = 750
         
         # まず現在の週の複数ページをチェック
         for page in range(1, max_pages + 1):
