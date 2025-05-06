@@ -833,8 +833,14 @@ class VideoMaker:
         # ④ 神商品（少し大きめ）
         text = f"神{genre}"
         text_len_shohin = len(text)  
-        if text_len_shohin >= 10:
+        if text_len_shohin >= 12:
+            heavy_font = heavy80
+        elif text_len_shohin >= 10:
+            heavy_font = heavy90
+        elif text_len_shohin >= 9:
             heavy_font = heavy100
+        elif text_len_shohin >= 8:
+            heavy_font = heavy110
         elif text_len_shohin >= 6:
             heavy_font = heavy130
         else: 
