@@ -324,12 +324,14 @@ class VideoMaker:
         base = int(self.TITLE_FONT_SIZE * 1.9)   # 現行サイズ
         if text_len <= 6:
             return base + 20          # 少ない ⇒ 大
-        elif text_len <= 9:
-            return base               # 標準
+        elif text_len <= 8:
+            return base              # 標準
         elif text_len <= 12:
             return base - 30           # やや小
+        elif text_len <= 16:
+            return base - 50          # やや小
         else:
-            return base - 40          # もっと小
+            return base - 70          # もっと小
         
     def _calc_name_block_bottom(self, start_y: int, lines: list[str]) -> int:
         """商品名ブロックの下端 Y 座標を返す"""
