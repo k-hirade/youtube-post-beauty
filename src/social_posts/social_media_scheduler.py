@@ -698,30 +698,94 @@ class SocialMediaScheduler:
             プラットフォーム別投稿結果
         """
         results = {}
+        any_platform_updated = False
         
         # YouTubeに投稿（環境変数がtrueの場合のみ）
-        if "youtube" in self.platforms and os.environ.get("ENABLE_YOUTUBE_SHORTS", "false").lower() == "true":
-            results["youtube"] = self.post_to_youtube(video)
-        else:
-            logging.info("Youtube投稿をスキップ")
+        if "youtube" in self.platforms:
+            if os.environ.get("ENABLE_YOUTUBE_SHORTS", "false").lower() == "true":
+                results["youtube"] = self.post_to_youtube(video)
+                if results["youtube"].get("success", False):
+                    any_platform_updated = True
+            else:
+                # YouTubeが無効な場合でも、スプレッドシートを更新
+                if not video["youtube_uploaded"]:
+                    self.update_spreadsheet_status(
+                        video_id=video["video_id"],
+                        row_index=video["row_index"],
+                        platform="youtube",
+                        status=True,
+                        url="投稿設定無効"
+                    )
+                    any_platform_updated = True
+                    results["youtube"] = {"success": True, "skipped": True, "error": "YouTube投稿無効化済み"}
+                else:
+                    results["youtube"] = {"success": True, "already_posted": True}
         
         # TikTokに投稿（環境変数がtrueの場合のみ）
-        if "tiktok" in self.platforms and os.environ.get("ENABLE_TIKTOK_SHORTS", "false").lower() == "true":
-            results["tiktok"] = self.post_to_tiktok(video)
-        else:
-            logging.info("Tiktok投稿をスキップ")
+        if "tiktok" in self.platforms:
+            if os.environ.get("ENABLE_TIKTOK_SHORTS", "false").lower() == "true":
+                results["tiktok"] = self.post_to_tiktok(video)
+                if results["tiktok"].get("success", False):
+                    any_platform_updated = True
+            else:
+                # TikTokが無効な場合でも、スプレッドシートを更新
+                if not video["tiktok_uploaded"]:
+                    self.update_spreadsheet_status(
+                        video_id=video["video_id"],
+                        row_index=video["row_index"],
+                        platform="tiktok",
+                        status=True,
+                        url="投稿設定無効"
+                    )
+                    any_platform_updated = True
+                    results["tiktok"] = {"success": True, "skipped": True, "error": "TikTok投稿無効化済み"}
+                else:
+                    results["tiktok"] = {"success": True, "already_posted": True}
         
         # Instagramに投稿（環境変数がtrueの場合のみ）
-        if "instagram" in self.platforms and os.environ.get("ENABLE_INSTAGRAM_SHORTS", "false").lower() == "true":
-            results["instagram"] = self.post_to_instagram(video)
-        else:
-            logging.info("Instagram投稿をスキップ")
+        if "instagram" in self.platforms:
+            if os.environ.get("ENABLE_INSTAGRAM_SHORTS", "false").lower() == "true":
+                results["instagram"] = self.post_to_instagram(video)
+                if results["instagram"].get("success", False):
+                    any_platform_updated = True
+            else:
+                # Instagramが無効な場合でも、スプレッドシートを更新
+                if not video["instagram_uploaded"]:
+                    self.update_spreadsheet_status(
+                        video_id=video["video_id"],
+                        row_index=video["row_index"],
+                        platform="instagram",
+                        status=True,
+                        url="投稿設定無効"
+                    )
+                    any_platform_updated = True
+                    results["instagram"] = {"success": True, "skipped": True, "error": "Instagram投稿無効化済み"}
+                else:
+                    results["instagram"] = {"success": True, "already_posted": True}
         
         # Twitterに投稿（環境変数がtrueの場合のみ）
-        if "twitter" in self.platforms and os.environ.get("ENABLE_TWITTER_SHORTS", "false").lower() == "true":
-            results["twitter"] = self.post_to_twitter(video)
-        else:
-            logging.info("Twitter投稿をスキップ")
+        if "twitter" in self.platforms:
+            if os.environ.get("ENABLE_TWITTER_SHORTS", "false").lower() == "true":
+                results["twitter"] = self.post_to_twitter(video)
+                if results["twitter"].get("success", False):
+                    any_platform_updated = True
+            else:
+                # Twitterが無効な場合でも、スプレッドシートを更新
+                if not video["twitter_uploaded"]:
+                    self.update_spreadsheet_status(
+                        video_id=video["video_id"],
+                        row_index=video["row_index"],
+                        platform="twitter",
+                        status=True,
+                        url="投稿設定無効"
+                    )
+                    any_platform_updated = True
+                    results["twitter"] = {"success": True, "skipped": True, "error": "Twitter投稿無効化済み"}
+                else:
+                    results["twitter"] = {"success": True, "already_posted": True}
+        
+        # 投稿結果にフラグを追加
+        results["any_platform_updated"] = any_platform_updated
         
         return results
     
@@ -759,11 +823,17 @@ class SocialMediaScheduler:
                 "results": results
             }
             
+            # いずれかのプラットフォームが更新された場合、次の動画に進む準備ができたことをログに記録
+            if results.get("any_platform_updated", False):
+                logger.info(f"動画ID {video['video_id']} の少なくとも1つのプラットフォームが更新されました")
+            else:
+                logger.warning(f"動画ID {video['video_id']} はどのプラットフォームも更新されませんでした。設定を確認してください")
+            
         except Exception as e:
             logger.error(f"動画ID {video['video_id']} の投稿処理中にエラーが発生: {str(e)}")
         
         logger.info(f"投稿ジョブ完了: {time_slot}")
-    
+        
     def configure_schedule(self):
         """スケジュール設定"""
         # 朝: 6:00から7:00まで15分ごとに1本
