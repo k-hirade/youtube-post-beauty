@@ -252,7 +252,7 @@ class YouTubePoster:
                     logger.info(f"サムネイル設定開始: {thumbnail_path}")
                     self.service.thumbnails().set(
                         videoId=video_id,
-                        media_body=MediaFileUpload(thumbnail_path)
+                        media_body=MediaFileUpload(thumbnail_path, mimetype="image/jpeg")
                     ).execute()
                     logger.info("サムネイル設定完了")
                 except Exception as e:

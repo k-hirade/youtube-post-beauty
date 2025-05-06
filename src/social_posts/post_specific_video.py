@@ -171,6 +171,7 @@ class VideoPostExecutor:
                         "title": row.get("タイトル", ""),
                         "video_uri": row.get("GCS動画URI", ""),
                         "thumbnail_uri": row.get("GCSサムネイルURI", ""),
+                        "description": row.get("概要欄", ""),
                         "row_index": i + 2  # 1-based indexing + header row
                     }
                     
