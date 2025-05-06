@@ -645,7 +645,7 @@ class VideoMaker:
         # 表示位置の調整 - ブランド名を追加したので開始位置を上にシフト
         start_y = 350 - (len(name_lines)-1)*40  # 以前は400
         # ブランド名のためのフォントサイズと空間
-        brand_font_size = self.BRAND_FONT_SIZE + 100  # 少し大きくしておく
+        brand_font_size = self.BRAND_FONT_SIZE + 70  # 少し大きくしておく
         brand_space = 20
         # ブランド名のフォント
         brand_font = ImageFont.truetype(self.SOURCE_HAN_SERIF_HEAVY, brand_font_size)
