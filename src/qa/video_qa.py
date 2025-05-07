@@ -51,6 +51,194 @@ class VideoQA:
                 logger.info("Google Sheets連携初期化成功")
             except Exception as e:
                 logger.error(f"Google Sheets初期化エラー: {str(e)}")
+
+    def add_to_chinese_spreadsheet(
+        self,
+        metadata: Dict[str, Any],
+        genre: str,
+        channel: str,
+        title: str,
+        ranking_type: str,
+        gcs_uri: Optional[str] = None,
+        qa_status: str = "OK",
+        notes: str = "",
+        thumbnail_gcs_uri: Optional[str] = None,
+        run_id: Optional[int] = None,
+        social_media_results: Optional[Dict[str, Dict[str, str]]] = None
+    ) -> bool:
+        """
+        Add video information to the Chinese version spreadsheet
+        
+        Args:
+            metadata: Video metadata
+            genre: Genre
+            channel: Channel
+            title: Title
+            ranking_type: Ranking type
+            gcs_uri: GCS URI (video)
+            qa_status: Validation status
+            notes: Notes
+            thumbnail_gcs_uri: Thumbnail GCS URI
+            run_id: Execution ID
+            social_media_results: Social media upload results
+            
+        Returns:
+            Whether successful
+        """
+        if not self.sheets_client or not self.spreadsheet_id:
+            logger.warning("Google Sheets integration not configured")
+            return False
+        
+        try:
+            # Open spreadsheet
+            spreadsheet = self.sheets_client.open_by_key(self.spreadsheet_id)
+            
+            # Get "動画一覧_ch" worksheet (create if not exists)
+            try:
+                worksheet = spreadsheet.worksheet("動画一覧_ch")
+            except gspread.exceptions.WorksheetNotFound:
+                worksheet = spreadsheet.add_worksheet(
+                    title="動画一覧_ch",
+                    rows=1000,
+                    cols=28
+                )
+                
+                # Set header (same as Japanese version)
+                header = [
+                    "動画ID", "タイムスタンプ", "タイトル", "概要欄", "ジャンル", "チャンネル", "ランキングタイプ",
+                    "GCS動画URI", "GCSサムネイルURI",
+                    "YouTubeアップロード", "YouTube URL", "YouTube 動画ID",
+                    "TikTokアップロード", "TikTok URL", 
+                    "Instagramアップロード", "Instagram URL",
+                    "Xアップロード", "X URL",
+                    "QAステータス", "エラー詳細", "実行ID", "動画時間", 
+                    "メタデータ", "備考", 
+                ]
+                worksheet.append_row(header)
+            
+            # Create timestamp
+            timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+            
+            # Extract social media information (same as original method)
+            youtube_uploaded = "FALSE"
+            youtube_url = ""
+            youtube_id = ""
+            tiktok_uploaded = "FALSE"
+            tiktok_url = ""
+            instagram_uploaded = "FALSE"
+            instagram_url = ""
+            x_uploaded = "FALSE"
+            x_url = ""
+            
+            if social_media_results:
+                # YouTube
+                if social_media_results.get("youtube", {}).get("success", False):
+                    youtube_uploaded = "TRUE"
+                    youtube_id = social_media_results["youtube"].get("id", "")
+                    youtube_url = social_media_results["youtube"].get("url", "")
+                
+                # TikTok
+                if social_media_results.get("tiktok", {}).get("success", False):
+                    tiktok_uploaded = "TRUE"
+                    tiktok_url = social_media_results["tiktok"].get("url", "")
+                
+                # Instagram
+                if social_media_results.get("instagram", {}).get("success", False):
+                    instagram_uploaded = "TRUE"
+                    instagram_url = social_media_results["instagram"].get("url", "")
+                    
+                # X
+                if social_media_results.get("x", {}).get("success", False):
+                    x_uploaded = "TRUE"
+                    x_url = social_media_results["x"].get("url", "")
+            
+            # Convert metadata to JSON format
+            metadata_json = json.dumps(metadata)
+            
+            # Format GCS URIs
+            formatted_gcs_uri = ""
+            if gcs_uri and gcs_uri.startswith("gs://"):
+                formatted_gcs_uri = gcs_uri.replace("gs://", "https://storage.cloud.google.com/")
+            else:
+                formatted_gcs_uri = gcs_uri or ''
+                
+            formatted_thumbnail_gcs_uri = ""
+            if thumbnail_gcs_uri and thumbnail_gcs_uri.startswith("gs://"):
+                formatted_thumbnail_gcs_uri = thumbnail_gcs_uri.replace("gs://", "https://storage.cloud.google.com/")
+            else:
+                formatted_thumbnail_gcs_uri = thumbnail_gcs_uri or ''
+            
+            # Get previous max video ID
+            try:
+                all_rows = worksheet.get_all_values()
+                if len(all_rows) > 1:  # Exclude header row
+                    # Get video ID (first column) from last row
+                    last_video_id = all_rows[-1][0]
+                    # Convert to number
+                    if last_video_id and last_video_id.isdigit():
+                        video_id = int(last_video_id) + 1
+                    else:
+                        video_id = 1
+                else:
+                    video_id = 1
+            except Exception as e:
+                logger.error(f"Error getting video ID: {str(e)}")
+                video_id = 1
+            
+            # Apply new title format (with Chinese indicator)
+            formatted_title = self._format_title(channel, genre) + "【中文字幕版】"
+            
+            # Generate hashtags for description
+            description_hashtags = self._generate_hashtags(genre, channel, ranking_type) + " #中文字幕 #ChineseSubtitles"
+            
+            # Create data row (add description column)
+            row = [
+                str(video_id),  # Video ID
+                timestamp,
+                formatted_title,
+                description_hashtags,
+                genre,
+                channel,
+                ranking_type,
+                formatted_gcs_uri,
+                formatted_thumbnail_gcs_uri,
+                youtube_uploaded,
+                youtube_url,
+                youtube_id,
+                tiktok_uploaded,
+                tiktok_url,
+                instagram_uploaded,
+                instagram_url,
+                x_uploaded,
+                x_url,
+                qa_status,
+                notes,
+                run_id or '',
+                f"{metadata.get('duration', 0):.2f}",
+                metadata_json,
+                "中国語翻訳版",  # Notes
+            ]
+
+            try:
+                # Add to spreadsheet
+                response = worksheet.append_row(row)
+                logger.info(f"Added to Chinese spreadsheet: {formatted_title}, Video ID: {video_id}")
+
+            except Exception as sheet_error:
+                logger.error(f"Error adding row to Chinese spreadsheet: {type(sheet_error).__name__}: {str(sheet_error)}")
+                pass
+            
+            # If products are included, add to "使用製品" worksheet as well
+            if "products" in metadata and isinstance(metadata["products"], list):
+                self._add_products_to_spreadsheet(spreadsheet, video_id, metadata["products"])
+            
+            return True
+            
+        except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
+            logger.error(f"Error adding to Chinese spreadsheet details:\n{error_details}")
+            return False
     
     def _init_google_sheets(self):
         """Google Sheets APIクライアントの初期化"""

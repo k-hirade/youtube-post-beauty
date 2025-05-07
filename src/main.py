@@ -55,6 +55,37 @@ def setup_logging(log_file: Optional[str] = None, log_level: int = logging.INFO)
         file_handler.setFormatter(logging.Formatter(log_format))
         logging.getLogger().addHandler(file_handler)
 
+def translate_to_chinese(text: str) -> str:
+    """
+    Translate text from Japanese to Chinese using an LLM
+    
+    Args:
+        text: Japanese text to translate
+        
+    Returns:
+        str: Chinese translation
+    """
+    try:
+        # Use OpenAI's API for translation
+        import openai
+        
+        response = openai.ChatCompletion.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": "You are a professional translator from Japanese to Chinese. Translate the following text to natural, simple Chinese that can be easily understood."},
+                {"role": "user", "content": f"Translate this Japanese text to Chinese:\n\n{text}"}
+            ],
+            temperature=0.3,
+            max_tokens=1024
+        )
+        
+        translated_text = response.choices[0].message.content.strip()
+        return translated_text
+    except Exception as e:
+        logger.error(f"Translation error: {str(e)}")
+        # If translation fails, return original text with error indicator
+        return f"[翻訳エラー] {text}"
+
 def parse_args():
     """コマンドライン引数のパース"""
     parser = argparse.ArgumentParser(description='アットコスメランキングからショート動画を自動生成')
@@ -341,6 +372,83 @@ def run_pipeline(args):
             thumbnail_gs_uri=thumbnail_gcs_uri
         )
         
+        # Create Chinese translation version
+        if os.environ.get("ENABLE_CHINESE_TRANSLATION", "false").lower() == "true":
+            try:
+                logger.info("Starting Chinese translation video creation")
+                
+                # 1. Gather all narration texts
+                narration_texts = []
+                
+                # Add intro narration
+                intro_title = f"一度はマジで使ってみてほしい{channel}で買える神{genre}挙げてく。これはブックマーク必須やで"
+                narration_texts.append(intro_title)
+                
+                # Add product narrations
+                for product in selected_with_reviews:
+                    product_name_for_narration = video_maker._prepare_product_name_for_narration(product.get('name'), product['brand'])
+                    product_intro_text = f"{product['new_rank']}位、{product_name_for_narration}"
+                    narration_texts.append(product_intro_text)
+                    
+                    # Add review narrations (if available)
+                    if 'reviews' in product:
+                        for review in product['reviews'][:3]:  # Max 3 reviews per product
+                            if review:
+                                narration_texts.append(str(review))
+                
+                # 2. Analyze video to get timing information
+                timing_data = video_maker.analyze_video_for_narration_timing(output_video, narration_texts)
+                
+                # 3. Translate all texts to Chinese
+                for jp_text in timing_data:
+                    chinese_text = translate_to_chinese(jp_text)
+                    timing_data[jp_text]['text'] = chinese_text
+                    logger.info(f"Translated: {jp_text[:30]}... -> {chinese_text[:30]}...")
+                
+                # 4. Create Chinese version of the video
+                chinese_video_filename = f"video_ch_{timestamp}.mp4"
+                chinese_output_video = video_maker.create_chinese_translation_video(
+                    original_video_path=output_video,
+                    translations=timing_data,
+                    output_filename=chinese_video_filename
+                )
+                
+                # 5. Upload Chinese version to GCS
+                chinese_gcs_uri = ""
+                if gcs_upload:
+                    try:
+                        chinese_gcs_uri = uploader.upload_video(
+                            video_path=chinese_output_video,
+                            title=f"{args.channel}で買える{args.genre}ランキング【中文字幕版】",
+                            genre=args.genre,
+                            channel=args.channel
+                        )
+                        logger.info(f"Chinese video uploaded to GCS: {chinese_gcs_uri}")
+                    except Exception as e:
+                        logger.error(f"Error uploading Chinese video to GCS: {str(e)}")
+                
+                # 6. Add to Chinese spreadsheet
+                qa.add_to_chinese_spreadsheet(
+                    metadata=metadata,
+                    genre=args.genre,
+                    channel=args.channel,
+                    title=f"{args.channel}で買える{args.genre}ランキング【中文字幕版】",
+                    ranking_type=args.ranking_type,
+                    gcs_uri=chinese_gcs_uri,
+                    thumbnail_gcs_uri=thumbnail_gcs_uri,
+                    qa_status="OK" if is_ok else "NG",
+                    notes=err,
+                    run_id=run_id,
+                    social_media_results=None  # We're not uploading Chinese version to social media yet
+                )
+                
+                logger.info("Chinese translation video created and data saved to spreadsheet")
+                
+            except Exception as e:
+                logger.error(f"Error creating Chinese translation video: {str(e)}")
+                import traceback
+                logger.error(traceback.format_exc())
+
         return True
         
     except Exception as e:

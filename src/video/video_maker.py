@@ -107,6 +107,184 @@ class VideoMaker:
             logger.warning(f"指定したフォント({self.font_path})が見つかりません。代替フォントを使用します。")
             self.font_path = None
 
+    def create_chinese_translation_video(
+        self,
+        original_video_path: str,
+        translations: Dict[str, str],  # Map of Japanese text to Chinese translation
+        output_filename: Optional[str] = None
+    ) -> str:
+        """
+        Create a Chinese translated version of an existing video by adding subtitle overlays
+        
+        Args:
+            original_video_path: Path to the original Japanese video
+            translations: Dictionary mapping Japanese narration text to Chinese translations
+            output_filename: Output file name for the translated video
+            
+        Returns:
+            str: Path to the created video
+        """
+        logger.info(f"Creating Chinese translation video from: {original_video_path}")
+        
+        if not output_filename:
+            basename = os.path.basename(original_video_path)
+            name_parts = os.path.splitext(basename)
+            output_filename = f"{name_parts[0]}_ch{name_parts[1]}"
+        
+        output_path = os.path.join(self.output_dir, output_filename)
+        
+        try:
+            # Create a temporary directory for processing
+            with tempfile.TemporaryDirectory() as temp_dir:
+                # Create subtitles file
+                subtitles_path = os.path.join(temp_dir, "subtitles.srt")
+                self._create_subtitles_file(translations, subtitles_path)
+                
+                # Add subtitles to the video using FFmpeg
+                cmd = [
+                    "ffmpeg", "-y",
+                    "-i", original_video_path,
+                    "-vf", f"subtitles={subtitles_path}:force_style='FontName=NotoSansSC-Bold,FontSize=24,PrimaryColour=&HFFFFFF,OutlineColour=&H000000,BorderStyle=3,Outline=2,Shadow=1,Alignment=2'",
+                    "-c:a", "copy",
+                    output_path
+                ]
+                
+                subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                logger.info(f"Chinese translation video created: {output_path}")
+                
+                return output_path
+        except Exception as e:
+            logger.error(f"Error creating Chinese translation video: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            raise
+            
+    def _create_subtitles_file(
+        self,
+        translations: Dict[str, str],
+        output_path: str
+    ) -> None:
+        """
+        Create a subtitles file in SRT format from translations
+        
+        Args:
+            translations: Dictionary mapping Japanese text to Chinese translations with timing info
+            output_path: Path to save the SRT file
+        """
+        try:
+            with open(output_path, 'w', encoding='utf-8') as f:
+                index = 1
+                for jp_text, translation_info in translations.items():
+                    chinese_text = translation_info['text']
+                    start_time = translation_info['start_time']
+                    end_time = translation_info['end_time']
+                    
+                    # Format times as HH:MM:SS,mmm
+                    start_formatted = self._format_srt_time(start_time)
+                    end_formatted = self._format_srt_time(end_time)
+                    
+                    # Write SRT entry
+                    f.write(f"{index}\n")
+                    f.write(f"{start_formatted} --> {end_formatted}\n")
+                    f.write(f"{chinese_text}\n\n")
+                    
+                    index += 1
+            
+            logger.info(f"Created subtitles file: {output_path}")
+        except Exception as e:
+            logger.error(f"Error creating subtitles file: {e}")
+            raise
+
+    def _format_srt_time(self, seconds: float) -> str:
+        """
+        Format seconds as HH:MM:SS,mmm for SRT format
+        
+        Args:
+            seconds: Time in seconds
+            
+        Returns:
+            str: Formatted time string
+        """
+        hours = int(seconds / 3600)
+        minutes = int((seconds % 3600) / 60)
+        seconds = seconds % 60
+        milliseconds = int((seconds - int(seconds)) * 1000)
+        
+        return f"{hours:02}:{minutes:02}:{int(seconds):02},{milliseconds:03}"
+
+    def analyze_video_for_narration_timing(
+        self, 
+        video_path: str,
+        narration_texts: List[str]
+    ) -> Dict[str, Dict[str, Any]]:
+        """
+        Analyze video to determine timing of narrations using Whisper for audio analysis
+        
+        Args:
+            video_path: Path to the video file
+            narration_texts: List of narration texts in original language
+            
+        Returns:
+            Dictionary mapping original text to timing information
+        """
+        try:
+            # First extract audio from video
+            with tempfile.TemporaryDirectory() as temp_dir:
+                audio_path = os.path.join(temp_dir, "audio.wav")
+                
+                cmd = [
+                    "ffmpeg", "-y",
+                    "-i", video_path,
+                    "-vn", "-acodec", "pcm_s16le",
+                    "-ar", "16000", "-ac", "1",
+                    audio_path
+                ]
+                
+                subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                
+                # Use whisper to transcribe with timestamps
+                import whisper
+                
+                model = whisper.load_model("base")
+                result = model.transcribe(
+                    audio_path,
+                    language="ja",
+                    verbose=False,
+                    word_timestamps=True
+                )
+                
+                # Match transcribed segments with our known narration texts
+                timing_data = {}
+                
+                for narration in narration_texts:
+                    best_match = None
+                    highest_similarity = 0
+                    
+                    for segment in result["segments"]:
+                        # Calculate similarity between narration and transcribed text
+                        from difflib import SequenceMatcher
+                        similarity = SequenceMatcher(None, narration, segment["text"]).ratio()
+                        
+                        if similarity > highest_similarity and similarity > 0.6:  # Threshold
+                            highest_similarity = similarity
+                            best_match = segment
+                    
+                    if best_match:
+                        timing_data[narration] = {
+                            "start_time": best_match["start"],
+                            "end_time": best_match["end"],
+                            "text": ""  # Will be filled with Chinese translation
+                        }
+                    else:
+                        # Fallback if no good match found
+                        logger.warning(f"Could not find timing for narration: {narration}")
+                
+                return timing_data
+        except Exception as e:
+            logger.error(f"Error analyzing video for narration timing: {e}")
+            # Return empty dictionary as fallback
+            return {}
+
     def _draw_text_italic(
         self,
         base: Image.Image,
