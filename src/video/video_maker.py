@@ -1051,7 +1051,7 @@ class VideoMaker:
             with tempfile.TemporaryDirectory() as animation_dir:
                 # フレーム数の設定
                 fps = 30
-                frame_count = max(int(fps * animation_duration), 3)  # 最低3フレーム
+                frame_count = max(int(fps * animation_duration), 2)  # 最低3フレーム
                 
                 # アニメーションフレームの生成
                 frame_paths = []
@@ -1302,7 +1302,7 @@ class VideoMaker:
         """
         if not product_name or not brand_name:
             return product_name
-            
+                
         # スペース正規化
         product_name = re.sub(r"\s+", " ", product_name.replace("　", " ")).strip()
         
@@ -1320,7 +1320,10 @@ class VideoMaker:
         product_name = re.sub(r"\s+", " ", product_name).strip()
         if not product_name:
             return "商品"
-            
+        
+        # 読み上げ用にスペースを削除 - この行を追加
+        product_name = product_name.replace(' ', '').replace('　', '')
+                
         return product_name
 
     def create_video(
@@ -1558,7 +1561,8 @@ class VideoMaker:
                     
                     # 製品名・ブランド名だけのナレーション用テキスト
                     product_name_for_narration = self._prepare_product_name_for_narration(product.get('name'), brand_name)
-                    product_intro_text = f"{rank}位、{brand_name}の{product_name_for_narration}"
+                    # product_intro_text = f"{rank}位、{brand_name}の{product_name_for_narration}"
+                    product_intro_text = f"{rank}位、{product_name_for_narration}"
                     
                     # 製品紹介ナレーション音声を生成
                     product_audio_path = os.path.join(temp_dir, f"product_{rank}_audio.wav")
@@ -1567,7 +1571,7 @@ class VideoMaker:
                     # ナレーション音声があれば使用、なければ3秒間の無音
                     if os.path.exists(product_audio_path) and os.path.getsize(product_audio_path) > 100:
                         audio_duration = get_audio_duration(product_audio_path)
-                        display_duration = max(audio_duration + 0.5, 3.0)  # 少し余裕を持たせる
+                        display_duration = max(audio_duration + 0.2, 1.5)  # 少し余裕を持たせる
                         
                         # 各製品紹介に和太鼓効果音をミックス
                         product_audio_with_effect_path = os.path.join(temp_dir, f"product_{rank}_audio_with_effect.wav")
@@ -1608,7 +1612,7 @@ class VideoMaker:
                         rank, 
                         os.path.join(temp_dir, f"product_{rank}_animation.mp4"), 
                         show_name=True,
-                        animation_duration=0.1  # 0.1秒のアニメーション
+                        animation_duration=0.05
                     )
 
                     if animation_success:

@@ -227,6 +227,9 @@ def preprocess_text_for_speech(text: str) -> str:
     # URLや特殊記号を適切に処理
     text = re.sub(r'https?://\S+', 'URL', text)
     
+    # 読み上げ時にだけスペース（半角・全角）を削除 - ここを追加
+    text = text.replace(' ', '').replace('　', '')
+    
     # 長いテキストの場合は適切に分割
     max_length = 500  # 一般的な音声合成エンジンの制限値
     if len(text) > max_length:
