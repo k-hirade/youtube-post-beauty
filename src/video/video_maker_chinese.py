@@ -123,6 +123,154 @@ class ChineseVideoMaker(VideoMaker):
         except Exception as e:
             logger.error(f"中国語フォント読み込みエラー: {str(e)}")
             return self.get_font(size)
+
+    def create_video_segment_with_subtitle(
+        self, 
+        image_path: str, 
+        audio_path: str, 
+        chinese_text: str, 
+        output_path: str
+    ) -> bool:
+        """
+        字幕付きビデオセグメントを作成する
+        
+        Args:
+            image_path: スライド画像のパス
+            audio_path: 音声ファイルのパス
+            chinese_text: 中国語字幕テキスト
+            output_path: 出力ビデオパス
+            
+        Returns:
+            bool: 成功したかどうか
+        """
+        try:
+            # 画像の寸法を取得
+            img = Image.open(image_path)
+            width, height = img.size
+            
+            # 字幕画像を生成
+            subtitle_img = self.create_subtitle_image(
+                chinese_text,
+                width,
+                height,
+                self.SUBTITLE_POSITION_Y
+            )
+            
+            # 字幕画像の保存先
+            subtitle_path = os.path.join(os.path.dirname(output_path), f"subtitle_{os.path.basename(output_path)}.png")
+            subtitle_img.save(subtitle_path)
+            
+            # 画像と字幕を合成
+            composite_img = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+            composite_img.paste(img.convert("RGBA"), (0, 0))
+            composite_img.alpha_composite(subtitle_img)
+            
+            # 合成画像を保存
+            composite_path = os.path.join(os.path.dirname(output_path), f"composite_{os.path.basename(output_path)}.png")
+            composite_img.convert("RGB").save(composite_path)
+            
+            # FFmpegで画像と音声を結合して動画を作成
+            cmd = [
+                "ffmpeg", "-y",
+                "-loop", "1",
+                "-i", composite_path,
+                "-i", audio_path,
+                "-c:v", "libx264",
+                "-tune", "stillimage",
+                "-c:a", "aac",
+                "-b:a", "192k",
+                "-pix_fmt", "yuv420p",
+                "-shortest",
+                output_path
+            ]
+            
+            subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            
+            # 一時ファイルを削除
+            if os.path.exists(subtitle_path):
+                os.remove(subtitle_path)
+            if os.path.exists(composite_path):
+                os.remove(composite_path)
+                
+            return True
+        except Exception as e:
+            logger.error(f"字幕付きビデオセグメント作成エラー: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return False
+
+    def create_animation_video_segment_with_subtitle(
+        self, 
+        animation_video_path: str, 
+        chinese_text: str, 
+        output_path: str
+    ) -> bool:
+        """
+        アニメーション動画に字幕を追加する
+        
+        Args:
+            animation_video_path: アニメーション動画のパス
+            chinese_text: 中国語字幕テキスト
+            output_path: 出力ビデオパス
+            
+        Returns:
+            bool: 成功したかどうか
+        """
+        try:
+            # 動画の情報を取得
+            probe_cmd = [
+                "ffprobe",
+                "-v", "error",
+                "-select_streams", "v:0",
+                "-show_entries", "stream=width,height",
+                "-of", "json",
+                animation_video_path
+            ]
+            
+            result = subprocess.run(probe_cmd, capture_output=True, text=True, check=True)
+            video_info = json.loads(result.stdout)
+            
+            width = video_info['streams'][0]['width']
+            height = video_info['streams'][0]['height']
+            
+            # 字幕画像を生成
+            subtitle_img = self.create_subtitle_image(
+                chinese_text,
+                width,
+                height,
+                self.SUBTITLE_POSITION_Y
+            )
+            
+            # 字幕画像の保存先
+            subtitle_path = os.path.join(os.path.dirname(output_path), f"subtitle_{os.path.basename(output_path)}.png")
+            subtitle_img.save(subtitle_path)
+            
+            # FFmpegのフィルタ処理で字幕をオーバーレイ
+            cmd = [
+                "ffmpeg", "-y",
+                "-i", animation_video_path,
+                "-i", subtitle_path,
+                "-filter_complex",
+                "[0:v][1:v]overlay=0:0:format=auto,format=yuv420p[v]",
+                "-map", "[v]",
+                "-map", "0:a",
+                "-c:v", "libx264",
+                "-c:a", "copy",
+                output_path
+            ]
+            
+            subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            
+            # 一時ファイルを削除
+            if os.path.exists(subtitle_path):
+                os.remove(subtitle_path)
+                
+            return True
+        except Exception as e:
+            logger.error(f"アニメーション字幕付きビデオセグメント作成エラー: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return False
     
     def translate_to_chinese(self, text: str) -> str:
         """
@@ -475,6 +623,7 @@ class ChineseVideoMaker(VideoMaker):
         ) -> Tuple[str, str]:
         """
         製品リストからショート動画を作成（日本語+中国語翻訳）
+        - 修正版: 字幕タイミングずれを解消するため、セグメントごとに字幕を同時適用
         
         Args:
             products: 製品情報リスト
@@ -488,154 +637,596 @@ class ChineseVideoMaker(VideoMaker):
         """
         logger.info(f"中国語字幕付き動画作成開始: {title}")
         
-        # まず、通常の日本語動画を作成
-        output_path = super().create_video(
-            products=products,
-            title=title,
-            channel=channel,
-            output_filename=output_filename
-        )
-        
         # 中国語翻訳付き動画のファイルパス
+        if not output_filename:
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            output_filename = f"video_{timestamp}.mp4"
+        
         if not chinese_output_filename:
             filename, ext = os.path.splitext(output_filename)
             chinese_output_filename = f"{filename}_chinese{ext}"
+        
+        output_path = os.path.join(self.output_dir, output_filename)
         chinese_output_path = os.path.join(self.output_dir, chinese_output_filename)
         
-        # 中国語動画の情報を格納する一時ディレクトリ
-        with tempfile.TemporaryDirectory() as temp_dir:
-            # 翻訳情報を格納するリスト
-            subtitle_segments = []
-            
-            # 現在のセグメントの開始時間（秒）
-            current_time = 0.0
-            
-            # 1. イントロテキストを翻訳
-            channel_intro = title.split('で買える')[0] if 'で買える' in title else ""
-            genre = title.split('で買える')[-1].replace('ランキング', '').strip() if 'で買える' in title else ""
-            intro_translations = self._prepare_intro_translations(channel_intro, genre)
-            
-            # イントロ音声の長さを取得
-            intro_audio_path = os.path.join(temp_dir, "intro_audio.wav")
-            intro_title = f"一度はマジで使ってみてほしい{channel_intro}で買える神{genre}挙げてく。これはブックマーク必須やで"
-            generate_narration(intro_title, intro_audio_path, "random")
-            
-            if os.path.exists(intro_audio_path) and os.path.getsize(intro_audio_path) > 100:
-                # 音声ファイルの長さを取得
-                audio_duration = get_audio_duration(intro_audio_path)
+        # 製品リストをシャッフルして順位を割り当て
+        shuffled_products = products[:7]  # 最大7製品までに制限
+        total_products = len(shuffled_products)
+        for i, product in enumerate(shuffled_products):
+            product['new_rank'] = total_products - i 
+        
+        # 動画セグメントのパスリスト（日本語・中国語）
+        jp_video_segments = []
+        cn_video_segments = []
+        
+        try:
+            # 一時ディレクトリを作成
+            with tempfile.TemporaryDirectory() as temp_dir:
+                # チャンネルとジャンルの情報を取得
+                channel_intro = title.split('で買える')[0] if 'で買える' in title else ""
+                genre = title.split('で買える')[-1].replace('ランキング', '').strip() if 'で買える' in title else ""
                 
-                # 音声分析（簡易的な方法として、全体の長さから推定）
-                main_part_duration = audio_duration * 0.7  # メインパートは全体の70%と推定
-                bookmark_part_duration = audio_duration - main_part_duration  # 残りの30%をブックマークパート
+                # 1. イントロスライドとテキストの準備
+                main_intro_text = f"一度はマジで使ってみてほしい{channel_intro}で買える神{genre}挙げてく。"
+                bookmark_text = "これはブックマーク必須やで"
+                intro_title = f"{main_intro_text}{bookmark_text}"
                 
-                # メインイントロの字幕
-                subtitle_segments.append({
-                    'text': intro_translations['main_intro'],
-                    'start_time': current_time,
-                    'end_time': current_time + main_part_duration
-                })
-                current_time += main_part_duration
+                # 中国語翻訳の取得
+                intro_translations = self._prepare_intro_translations(channel_intro, genre)
+                chinese_main_intro = intro_translations['main_intro']
+                chinese_bookmark = intro_translations['bookmark']
                 
-                # ブックマーク部分の字幕
-                subtitle_segments.append({
-                    'text': intro_translations['bookmark'],
-                    'start_time': current_time,
-                    'end_time': current_time + bookmark_part_duration
-                })
-                current_time += bookmark_part_duration
-            else:
-                # 音声がない場合はデフォルト値
-                subtitle_segments.append({
-                    'text': intro_translations['main_intro'],
-                    'start_time': current_time,
-                    'end_time': current_time + 2.0
-                })
-                current_time += 2.0
+                # 2. メインイントロスライド作成（「これはブックマーク必須やで」を表示しない）
+                main_intro_img = self._create_main_intro_slide(channel, genre)
+                main_intro_slide_path = os.path.join(temp_dir, "main_intro_slide.png")
+                main_intro_img.save(main_intro_slide_path)
                 
-                subtitle_segments.append({
-                    'text': intro_translations['bookmark'],
-                    'start_time': current_time,
-                    'end_time': current_time + 2.0
-                })
-                current_time += 2.0
-            
-            # 2. 製品リストをシャッフルして順位を割り当て
-            shuffled_products = products[:7]  # 最大7製品
-            total_products = len(shuffled_products)
-            
-            # 3. 各製品のナレーションの翻訳と時間の計算
-            for i, product in enumerate(shuffled_products):
-                rank = total_products - i
-                product['new_rank'] = rank
+                # 3. ブックマークスライド作成（ブックマーク部分だけを強調表示）
+                bookmark_intro_img = self._create_bookmark_intro_slide(channel, genre)
+                bookmark_intro_slide_path = os.path.join(temp_dir, "bookmark_intro_slide.png")
+                bookmark_intro_img.save(bookmark_intro_slide_path)
                 
-                # 製品紹介のナレーション翻訳
-                product_translations = self._prepare_product_translations(product, rank)
+                # 4. イントロ音声生成
+                intro_audio_path = os.path.join(temp_dir, "intro_audio.wav")
+                intro_success = generate_narration(intro_title, intro_audio_path, "random")
                 
-                # 製品紹介ナレーション音声を生成して長さを取得
-                product_audio_path = os.path.join(temp_dir, f"product_{rank}_audio.wav")
-                brand_name = product.get("brand", "")
-                product_name_for_narration = self._prepare_product_name_for_narration(product.get('name'), brand_name)
-                product_intro_text = f"{rank}位、{brand_name}の{product_name_for_narration}"
+                # 効果音パス
+                taiko_sound_path = "data/bgm/和太鼓でドドン.mp3"
+                syouhin_sound_path = "data/bgm/ニュッ3.mp3"
                 
-                generate_narration(product_intro_text, product_audio_path, "random")
-                
-                if os.path.exists(product_audio_path) and os.path.getsize(product_audio_path) > 100:
-                    # 音声の長さを取得
-                    audio_duration = get_audio_duration(product_audio_path)
-                    display_duration = max(audio_duration + 0.2, 1.5)  # 少し余裕を持たせる
-                else:
-                    # デフォルト値
-                    display_duration = 3.0
-                
-                # 製品紹介の字幕
-                subtitle_segments.append({
-                    'text': product_translations['product_intro'],
-                    'start_time': current_time,
-                    'end_time': current_time + display_duration
-                })
-                current_time += display_duration
-                
-                # レビューの翻訳と字幕
-                if 'reviews' in product and product['reviews']:
-                    reviews = product['reviews']
+                # 5. 音声処理とセグメント作成
+                if os.path.exists(intro_audio_path) and os.path.getsize(intro_audio_path) > 100:
+                    # 音声分析
+                    audio_duration = get_audio_duration(intro_audio_path)
+                    main_part_duration = audio_duration * 0.7  # メインパートは全体の70%と推定
+                    bookmark_part_duration = audio_duration - main_part_duration  # 残りの30%をブックマークパート
                     
-                    for j, review in enumerate(reviews[:3]):  # 最大3つのレビュー
-                        if not review:
+                    # メインイントロ音声の切り出し
+                    main_intro_audio_path = os.path.join(temp_dir, "main_intro_audio.wav")
+                    extract_cmd = [
+                        "ffmpeg", "-y",
+                        "-i", intro_audio_path,
+                        "-ss", "0",
+                        "-t", str(main_part_duration),
+                        "-c:a", "pcm_s16le",
+                        main_intro_audio_path
+                    ]
+                    
+                    subprocess.run(extract_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    
+                    # 和太鼓効果音を追加
+                    main_intro_with_effect_path = os.path.join(temp_dir, "main_intro_with_effect.wav")
+                    if os.path.exists(taiko_sound_path):
+                        mix_cmd = [
+                            "ffmpeg", "-y",
+                            "-i", main_intro_audio_path,
+                            "-i", taiko_sound_path,
+                            "-filter_complex",
+                            "[1:a]adelay=0|0,volume=1.2[effect];[0:a][effect]amix=inputs=2:duration=first[aout]",
+                            "-map", "[aout]",
+                            "-c:a", "pcm_s16le",
+                            main_intro_with_effect_path
+                        ]
+                        
+                        subprocess.run(mix_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                        main_intro_audio_path = main_intro_with_effect_path
+                    
+                    # メインイントロの日本語動画を作成（字幕なし）
+                    main_intro_jp_path = os.path.join(temp_dir, "main_intro_jp.mp4")
+                    cmd = [
+                        "ffmpeg", "-y",
+                        "-loop", "1",
+                        "-i", main_intro_slide_path,
+                        "-i", main_intro_audio_path,
+                        "-c:v", "libx264",
+                        "-tune", "stillimage",
+                        "-c:a", "aac",
+                        "-b:a", "192k",
+                        "-pix_fmt", "yuv420p",
+                        "-shortest",
+                        main_intro_jp_path
+                    ]
+                    
+                    subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    jp_video_segments.append(main_intro_jp_path)
+                    
+                    # メインイントロの中国語字幕付き動画を作成
+                    main_intro_cn_path = os.path.join(temp_dir, "main_intro_cn.mp4")
+                    self.create_video_segment_with_subtitle(
+                        image_path=main_intro_slide_path,
+                        audio_path=main_intro_audio_path,
+                        chinese_text=chinese_main_intro,
+                        output_path=main_intro_cn_path
+                    )
+                    cn_video_segments.append(main_intro_cn_path)
+                    
+                    # ブックマーク音声の切り出し
+                    bookmark_audio_path = os.path.join(temp_dir, "bookmark_audio.wav")
+                    extract_cmd = [
+                        "ffmpeg", "-y",
+                        "-i", intro_audio_path,
+                        "-ss", str(main_part_duration),
+                        "-t", str(bookmark_part_duration),
+                        "-c:a", "pcm_s16le",
+                        bookmark_audio_path
+                    ]
+                    
+                    subprocess.run(extract_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    
+                    # ブックマークの日本語動画を作成（字幕なし）
+                    bookmark_jp_path = os.path.join(temp_dir, "bookmark_jp.mp4")
+                    cmd = [
+                        "ffmpeg", "-y",
+                        "-loop", "1",
+                        "-i", bookmark_intro_slide_path,
+                        "-i", bookmark_audio_path,
+                        "-c:v", "libx264",
+                        "-tune", "stillimage",
+                        "-c:a", "aac",
+                        "-b:a", "192k",
+                        "-pix_fmt", "yuv420p",
+                        "-shortest",
+                        bookmark_jp_path
+                    ]
+                    
+                    subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    jp_video_segments.append(bookmark_jp_path)
+                    
+                    # ブックマークの中国語字幕付き動画を作成
+                    bookmark_cn_path = os.path.join(temp_dir, "bookmark_cn.mp4")
+                    self.create_video_segment_with_subtitle(
+                        image_path=bookmark_intro_slide_path,
+                        audio_path=bookmark_audio_path,
+                        chinese_text=chinese_bookmark,
+                        output_path=bookmark_cn_path
+                    )
+                    cn_video_segments.append(bookmark_cn_path)
+                else:
+                    # 音声生成に失敗した場合、デフォルトの無音動画を作成
+                    logger.warning("イントロの音声ファイルが存在しないか無効です。デフォルト動画を作成します。")
+                    display_duration = 3.0
+                    intro_audio_path = os.path.join(temp_dir, "silent_intro.wav")
+                    create_silent_audio(intro_audio_path, display_duration)
+                    
+                    # 日本語イントロ動画（字幕なし）
+                    intro_jp_path = os.path.join(temp_dir, "intro_jp.mp4")
+                    cmd = [
+                        "ffmpeg", "-y",
+                        "-loop", "1",
+                        "-i", main_intro_slide_path,
+                        "-i", intro_audio_path,
+                        "-c:v", "libx264",
+                        "-tune", "stillimage",
+                        "-c:a", "aac",
+                        "-b:a", "192k",
+                        "-pix_fmt", "yuv420p",
+                        "-shortest",
+                        intro_jp_path
+                    ]
+                    
+                    subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    jp_video_segments.append(intro_jp_path)
+                    
+                    # 中国語イントロ動画（字幕付き）
+                    intro_cn_path = os.path.join(temp_dir, "intro_cn.mp4")
+                    self.create_video_segment_with_subtitle(
+                        image_path=main_intro_slide_path,
+                        audio_path=intro_audio_path,
+                        chinese_text=chinese_main_intro,
+                        output_path=intro_cn_path
+                    )
+                    cn_video_segments.append(intro_cn_path)
+                
+                # 6. 各製品のセグメントを作成
+                for product in shuffled_products:
+                    rank = product['new_rank']
+                    product_name = product['name']
+                    brand_name = product.get('brand', '')
+                    reviews = product.get('reviews', [])
+                    
+                    # 製品名とブランド名のナレーション用テキスト
+                    product_name_for_narration = self._prepare_product_name_for_narration(product.get('name'), brand_name)
+                    product_intro_text = f"{rank}位、{brand_name}の{product_name_for_narration}"
+                    
+                    # 中国語翻訳
+                    product_translations = self._prepare_product_translations(product, rank)
+                    chinese_product_intro = product_translations['product_intro']
+                    
+                    # 製品紹介ナレーション音声を生成
+                    product_audio_path = os.path.join(temp_dir, f"product_{rank}_audio.wav")
+                    success = generate_narration(product_intro_text, product_audio_path, "random")
+                    
+                    # 音声の存在チェック
+                    if os.path.exists(product_audio_path) and os.path.getsize(product_audio_path) > 100:
+                        audio_duration = get_audio_duration(product_audio_path)
+                        display_duration = max(audio_duration + 0.2, 1.5)  # 余裕を持たせる
+                        
+                        # 効果音を追加
+                        product_audio_with_effect_path = os.path.join(temp_dir, f"product_{rank}_audio_with_effect.wav")
+                        if os.path.exists(syouhin_sound_path):
+                            mix_cmd = [
+                                "ffmpeg", "-y",
+                                "-i", product_audio_path,
+                                "-i", syouhin_sound_path,
+                                "-filter_complex",
+                                "[1:a]adelay=0|0,volume=1.0[effect];[0:a][effect]amix=inputs=2:duration=first[aout]",
+                                "-map", "[aout]",
+                                "-c:a", "pcm_s16le",
+                                product_audio_with_effect_path
+                            ]
+                            
+                            try:
+                                subprocess.run(mix_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                                product_audio_path = product_audio_with_effect_path
+                            except subprocess.CalledProcessError as e:
+                                logger.error(f"製品{rank}の効果音追加に失敗: {e.stderr}")
+                    else:
+                        logger.warning(f"製品 {rank} の音声ファイルが存在しないか無効です。無音を使用します。")
+                        display_duration = 3.0
+                        product_audio_path = os.path.join(temp_dir, f"silent_{rank}.wav")
+                        create_silent_audio(product_audio_path, display_duration)
+                    
+                    # アニメーション付き製品紹介動画の作成試行
+                    product_jp_animation_path = os.path.join(temp_dir, f"product_{rank}_jp_animation.mp4")
+                    animation_success = self._create_product_animation(
+                        product, 
+                        rank, 
+                        product_jp_animation_path,
+                        show_name=True,
+                        animation_duration=0.05
+                    )
+                    
+                    if animation_success:
+                        # アニメーション動画と音声を結合
+                        product_jp_path = os.path.join(temp_dir, f"product_{rank}_jp.mp4")
+                        cmd = [
+                            "ffmpeg", "-y",
+                            "-i", product_jp_animation_path,
+                            "-i", product_audio_path,
+                            "-c:v", "libx264",
+                            "-c:a", "aac",
+                            "-b:a", "192k",
+                            "-pix_fmt", "yuv420p",
+                            "-shortest",
+                            product_jp_path
+                        ]
+                        
+                        try:
+                            subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                            jp_video_segments.append(product_jp_path)
+                            
+                            # 中国語字幕付きアニメーション動画を作成
+                            product_cn_path = os.path.join(temp_dir, f"product_{rank}_cn.mp4")
+                            self.create_animation_video_segment_with_subtitle(
+                                animation_video_path=product_jp_path,
+                                chinese_text=chinese_product_intro,
+                                output_path=product_cn_path
+                            )
+                            cn_video_segments.append(product_cn_path)
+                        except subprocess.CalledProcessError as e:
+                            logger.error(f"製品 {rank} のアニメーション結合エラー: {e.stderr}")
+                            # 失敗時は静的画像版にフォールバック
+                            animation_success = False
+                    
+                    if not animation_success:
+                        # 静的な製品スライドの作成
+                        product_slide = self._create_product_slide(product, rank, brand_name=brand_name, show_name=True)
+                        product_slide_path = os.path.join(temp_dir, f"product_{rank}_slide.png")
+                        product_slide.save(product_slide_path)
+                        
+                        # 日本語の静的製品紹介動画
+                        product_jp_path = os.path.join(temp_dir, f"product_{rank}_jp.mp4")
+                        cmd = [
+                            "ffmpeg", "-y",
+                            "-loop", "1",
+                            "-i", product_slide_path,
+                            "-i", product_audio_path,
+                            "-c:v", "libx264",
+                            "-tune", "stillimage",
+                            "-c:a", "aac",
+                            "-b:a", "192k",
+                            "-pix_fmt", "yuv420p",
+                            "-shortest",
+                            product_jp_path
+                        ]
+                        
+                        try:
+                            subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                            jp_video_segments.append(product_jp_path)
+                            
+                            # 中国語字幕付き静的製品紹介動画
+                            product_cn_path = os.path.join(temp_dir, f"product_{rank}_cn.mp4")
+                            self.create_video_segment_with_subtitle(
+                                image_path=product_slide_path,
+                                audio_path=product_audio_path,
+                                chinese_text=chinese_product_intro,
+                                output_path=product_cn_path
+                            )
+                            cn_video_segments.append(product_cn_path)
+                        except subprocess.CalledProcessError as e:
+                            logger.error(f"製品 {rank} の静的動画生成エラー: {e.stderr}")
                             continue
+                    
+                    # レビューコメントがある場合、それぞれのコメントを処理
+                    if reviews:
+                        # レビューの中国語翻訳を取得
+                        translated_product = self.translate_product_reviews(product)
+                        chinese_reviews = translated_product.get('chinese_reviews', [])
                         
-                        # レビューを中国語に翻訳
-                        chinese_review = self.translate_to_chinese(review)
+                        # ベーススライドの作成
+                        base_slide = self._create_product_slide(product, rank, brand_name=brand_name, show_name=False)
+                        base_slide_path = os.path.join(temp_dir, f"product_{rank}_base_slide.png")
+                        base_slide.save(base_slide_path)
                         
-                        # レビュー音声の長さを取得
-                        review_audio_path = os.path.join(temp_dir, f"product_{rank}_review_{j+1}_audio.wav")
-                        generate_narration(review, review_audio_path, "random")
+                        # 表示済みコメントを保持するスライド
+                        accumulated_slide = base_slide.copy()
                         
-                        if os.path.exists(review_audio_path) and os.path.getsize(review_audio_path) > 100:
-                            # 音声の長さを取得
-                            audio_duration = get_audio_duration(review_audio_path)
-                            review_duration = max(audio_duration + 0.2, 1.5)  # 少し余裕を持たせる
-                        else:
-                            # デフォルト値
-                            review_duration = 3.0
+                        # コメント位置
+                        positions = ["top", "middle", "bottom"]
                         
-                        # レビューの字幕
-                        subtitle_segments.append({
-                            'text': chinese_review,
-                            'start_time': current_time,
-                            'end_time': current_time + review_duration
-                        })
-                        current_time += review_duration
-            
-            # 4. 元の動画に字幕を追加
-            subtitle_result = self.add_chinese_subtitles(
-                video_path=output_path,
-                output_path=chinese_output_path,
-                subtitle_segments=subtitle_segments
-            )
-            
-            if subtitle_result:
-                logger.info(f"中国語字幕付き動画の作成に成功: {chinese_output_path}")
+                        # 各レビューを処理
+                        for i, (review, chinese_review) in enumerate(zip(reviews[:3], chinese_reviews[:3])):
+                            if not review:
+                                continue
+                            
+                            # コメント位置
+                            comment_position = positions[i % len(positions)]
+                            
+                            # コメント用の累積スライドを更新
+                            comment_font = self.get_font(
+                                self.REVIEW_FONT_SIZE + 30,
+                                font_path=self.YASASHISA_GOTHIC if os.path.exists(self.YASASHISA_GOTHIC) else self.noto_sans_jp_path
+                            )
+                            draw = ImageDraw.Draw(accumulated_slide)
+                            
+                            # テキスト幅を調整して折り返し
+                            max_text_width = int(self.VIDEO_WIDTH * 0.7)
+                            lines = self.wrap_text(review, comment_font, draw, max_text_width)
+                            
+                            # バルーンサイズ計算
+                            line_h = int((self.REVIEW_FONT_SIZE + 15) * 1.4)
+                            text_h = line_h * len(lines)
+                            text_w = max(self.calculate_text_width(l, comment_font, draw) for l in lines)
+                            pad_x, pad_y = 40, 30
+                            
+                            # ボックス幅を画面幅の90%に固定
+                            box_w = int(self.VIDEO_WIDTH * 0.9)
+                            box_h = text_h + pad_y * 2
+                            
+                            # 位置決定
+                            center_x = self.VIDEO_WIDTH // 2
+                            if comment_position == "top":
+                                box_y = int(self.VIDEO_HEIGHT * 0.25)
+                            elif comment_position == "middle":
+                                box_y = int(self.VIDEO_HEIGHT * 0.5) - box_h // 2
+                            else:  # bottom
+                                box_y = int(self.VIDEO_HEIGHT * 0.75) - box_h
+                            
+                            box_x = center_x - box_w // 2
+                            
+                            # バルーン（角丸長方形）を描画
+                            border_col = self.COMMENT_COLORS[i % 3]
+                            rect = [
+                                (box_x, box_y),
+                                (box_x + box_w, box_y + box_h)
+                            ]
+                            
+                            # バルーン描画
+                            draw.rounded_rectangle(
+                                rect,
+                                radius=self.COMMENT_CORNER_RADIUS,
+                                fill=(255, 255, 255),
+                                outline=border_col,
+                                width=self.COMMENT_BORDER_PX
+                            )
+                            
+                            # テキスト描画
+                            for idx, line in enumerate(lines):
+                                tx = center_x - self.calculate_text_width(line, comment_font, draw) // 2
+                                ty = box_y + pad_y + idx * line_h
+                                draw.text((tx, ty), line, font=comment_font, fill=(0, 0, 0))
+                            
+                            # 累積スライドを保存
+                            comment_slide_path = os.path.join(temp_dir, f"product_{rank}_comment_{i+1}.png")
+                            accumulated_slide.save(comment_slide_path)
+                            
+                            # コメント用の音声を生成
+                            comment_audio_path = os.path.join(temp_dir, f"product_{rank}_comment_{i+1}_audio.wav")
+                            comment_success = generate_narration(review, comment_audio_path, "random")
+                            
+                            # 音声ファイルのチェック
+                            if not os.path.exists(comment_audio_path) or os.path.getsize(comment_audio_path) < 100:
+                                logger.warning(f"製品 {rank} のコメント {i+1} の音声ファイルが無効です。無音を使用します。")
+                                comment_audio_path = os.path.join(temp_dir, f"silent_comment_{rank}_{i+1}.wav")
+                                create_silent_audio(comment_audio_path, 3.0)
+                            
+                            # 日本語コメント動画の作成
+                            comment_jp_path = os.path.join(temp_dir, f"product_{rank}_comment_{i+1}_jp.mp4")
+                            cmd = [
+                                "ffmpeg", "-y",
+                                "-loop", "1",
+                                "-i", comment_slide_path,
+                                "-i", comment_audio_path,
+                                "-c:v", "libx264",
+                                "-tune", "stillimage",
+                                "-c:a", "aac",
+                                "-b:a", "192k",
+                                "-pix_fmt", "yuv420p",
+                                "-shortest",
+                                comment_jp_path
+                            ]
+                            
+                            try:
+                                subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                                jp_video_segments.append(comment_jp_path)
+                                
+                                # 中国語字幕付きコメント動画の作成
+                                comment_cn_path = os.path.join(temp_dir, f"product_{rank}_comment_{i+1}_cn.mp4")
+                                self.create_video_segment_with_subtitle(
+                                    image_path=comment_slide_path,
+                                    audio_path=comment_audio_path,
+                                    chinese_text=chinese_review,
+                                    output_path=comment_cn_path
+                                )
+                                cn_video_segments.append(comment_cn_path)
+                            except subprocess.CalledProcessError as e:
+                                logger.error(f"製品 {rank} のコメント {i+1} の動画生成エラー: {e.stderr}")
+                                continue
+                
+                # 7. 日本語動画の連結
+                jp_concat_file = os.path.join(temp_dir, "jp_concat.txt")
+                with open(jp_concat_file, "w") as f:
+                    for segment in jp_video_segments:
+                        f.write(f"file '{segment}'\n")
+                
+                jp_temp_video_path = os.path.join(temp_dir, "no_bgm_jp_output.mp4")
+                jp_concat_cmd = [
+                    "ffmpeg", "-y",
+                    "-f", "concat",
+                    "-safe", "0",
+                    "-i", jp_concat_file,
+                    "-c", "copy",
+                    jp_temp_video_path
+                ]
+                
+                try:
+                    subprocess.run(jp_concat_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    logger.info("日本語動画セグメントの連結が完了しました")
+                except subprocess.CalledProcessError as e:
+                    logger.error(f"日本語動画の連結エラー: {e.stderr}")
+                    raise
+                
+                # 8. 中国語動画の連結
+                cn_concat_file = os.path.join(temp_dir, "cn_concat.txt")
+                with open(cn_concat_file, "w") as f:
+                    for segment in cn_video_segments:
+                        f.write(f"file '{segment}'\n")
+                
+                cn_temp_video_path = os.path.join(temp_dir, "no_bgm_cn_output.mp4")
+                cn_concat_cmd = [
+                    "ffmpeg", "-y",
+                    "-f", "concat",
+                    "-safe", "0",
+                    "-i", cn_concat_file,
+                    "-c", "copy",
+                    cn_temp_video_path
+                ]
+                
+                try:
+                    subprocess.run(cn_concat_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    logger.info("中国語動画セグメントの連結が完了しました")
+                except subprocess.CalledProcessError as e:
+                    logger.error(f"中国語動画の連結エラー: {e.stderr}")
+                    raise
+                
+                # 9. 動画の長さを取得
+                jp_video_duration = self._get_video_duration(jp_temp_video_path)
+                cn_video_duration = self._get_video_duration(cn_temp_video_path)
+                
+                if jp_video_duration <= 0 or cn_video_duration <= 0:
+                    logger.warning("動画の長さが取得できませんでした。デフォルト値を使用します。")
+                    jp_video_duration = 60.0
+                    cn_video_duration = 60.0
+                
+                # 10. BGMを追加
+                bgm_path = os.path.join(self.bgm_dir, "しゅわしゅわハニーレモン.mp3")
+                if not os.path.exists(bgm_path):
+                    logger.warning(f"BGMファイルが見つかりません: {bgm_path}")
+                    logger.info("BGMなしで動画を出力します。")
+                    os.rename(jp_temp_video_path, output_path)
+                    os.rename(cn_temp_video_path, chinese_output_path)
+                else:
+                    # 日本語動画にBGMを追加
+                    jp_bgm_cmd = [
+                        "ffmpeg", "-y",
+                        "-i", jp_temp_video_path,
+                        "-stream_loop", "-1",
+                        "-i", bgm_path,
+                        "-filter_complex",
+                        f"[1:a]volume=0.25,aloop=loop=-1:size=2e+09[bgm];"
+                        "[0:a][bgm]amix=inputs=2:duration=first[aout]",
+                        "-map", "0:v",
+                        "-map", "[aout]",
+                        "-c:v", "copy",
+                        "-c:a", "aac",
+                        "-shortest",
+                        "-t", str(jp_video_duration),
+                        output_path
+                    ]
+                    
+                    try:
+                        subprocess.run(jp_bgm_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                        logger.info(f"日本語動画にBGMを追加しました: {output_path}")
+                    except subprocess.CalledProcessError as e:
+                        logger.error(f"日本語動画へのBGM追加に失敗: {e.stderr}")
+                        # エラーが発生した場合は元の動画を使用
+                        os.rename(jp_temp_video_path, output_path)
+                        logger.info(f"BGMなしで日本語動画を出力しました: {output_path}")
+                    
+                    # 中国語動画にBGMを追加
+                    cn_bgm_cmd = [
+                        "ffmpeg", "-y",
+                        "-i", cn_temp_video_path,
+                        "-stream_loop", "-1",
+                        "-i", bgm_path,
+                        "-filter_complex",
+                        f"[1:a]volume=0.25,aloop=loop=-1:size=2e+09[bgm];"
+                        "[0:a][bgm]amix=inputs=2:duration=first[aout]",
+                        "-map", "0:v",
+                        "-map", "[aout]",
+                        "-c:v", "copy",
+                        "-c:a", "aac",
+                        "-shortest",
+                        "-t", str(cn_video_duration),
+                        chinese_output_path
+                    ]
+                    
+                    try:
+                        subprocess.run(cn_bgm_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                        logger.info(f"中国語動画にBGMを追加しました: {chinese_output_path}")
+                    except subprocess.CalledProcessError as e:
+                        logger.error(f"中国語動画へのBGM追加に失敗: {e.stderr}")
+                        # エラーが発生した場合は元の動画を使用
+                        os.rename(cn_temp_video_path, chinese_output_path)
+                        logger.info(f"BGMなしで中国語動画を出力しました: {chinese_output_path}")
+                
+                # 一時ファイルの削除
+                if os.path.exists(jp_temp_video_path) and os.path.exists(output_path):
+                    os.remove(jp_temp_video_path)
+                if os.path.exists(cn_temp_video_path) and os.path.exists(chinese_output_path):
+                    os.remove(cn_temp_video_path)
+                
+                logger.info(f"日本語動画作成完了: {output_path}")
+                logger.info(f"中国語字幕付き動画作成完了: {chinese_output_path}")
+                
                 return output_path, chinese_output_path
-            else:
-                logger.error("中国語字幕付き動画の作成に失敗しました")
+                        
+        except Exception as e:
+            logger.error(f"中国語字幕付き動画作成エラー: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
+            # エラー時は日本語動画のみを返す
+            if os.path.exists(output_path):
                 return output_path, ""
+            else:
+                return "", ""
