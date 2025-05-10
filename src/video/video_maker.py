@@ -107,10 +107,68 @@ class VideoMaker:
             logger.warning(f"指定したフォント({self.font_path})が見つかりません。代替フォントを使用します。")
             self.font_path = None
 
+    def create_narration_timing_data(self, video_path: str, narration_texts: List[str]) -> Dict[str, Dict[str, Any]]:
+        """
+        Create timing data for narrations without using Whisper
+        
+        Args:
+            video_path: Path to the video file
+            narration_texts: List of narration texts in original language
+            
+        Returns:
+            Dictionary mapping original text to timing information
+        """
+        try:
+            # Get video duration
+            cmd = [
+                "ffprobe", 
+                "-v", "error", 
+                "-show_entries", "format=duration", 
+                "-of", "default=noprint_wrappers=1:nokey=1", 
+                video_path
+            ]
+            
+            process = subprocess.run(cmd, capture_output=True, text=True)
+            if process.returncode != 0:
+                logger.error(f"FFprobe error: {process.stderr}")
+                video_duration = 60.0  # Default if we can't determine
+            else:
+                video_duration = float(process.stdout.strip())
+            
+            # Distribute narration timing evenly across the video
+            timing_data = {}
+            total_narrations = len(narration_texts)
+            
+            if total_narrations == 0:
+                return {}
+            
+            # Simple approach: evenly distribute across video duration
+            segment_duration = video_duration / total_narrations
+            
+            for i, narration in enumerate(narration_texts):
+                start_time = i * segment_duration
+                end_time = (i + 1) * segment_duration
+                
+                # Adjust end time of last segment to match video duration
+                if i == total_narrations - 1:
+                    end_time = video_duration
+                
+                timing_data[narration] = {
+                    "start_time": start_time,
+                    "end_time": end_time,
+                    "text": ""  # Will be filled with Chinese translation
+                }
+            
+            return timing_data
+        except Exception as e:
+            logger.error(f"Error creating narration timing data: {e}")
+            # Return empty dictionary as fallback
+            return {}
+
     def create_chinese_translation_video(
         self,
         original_video_path: str,
-        translations: Dict[str, str],  # Map of Japanese text to Chinese translation
+        translations: Dict[str, Dict],
         output_filename: Optional[str] = None
     ) -> str:
         """
@@ -118,7 +176,7 @@ class VideoMaker:
         
         Args:
             original_video_path: Path to the original Japanese video
-            translations: Dictionary mapping Japanese narration text to Chinese translations
+            translations: Dictionary mapping Japanese text to Chinese translations
             output_filename: Output file name for the translated video
             
         Returns:
@@ -141,15 +199,30 @@ class VideoMaker:
                 self._create_subtitles_file(translations, subtitles_path)
                 
                 # Add subtitles to the video using FFmpeg
+                # Fix the FFmpeg command to avoid escaping issues with quotation marks
                 cmd = [
                     "ffmpeg", "-y",
                     "-i", original_video_path,
-                    "-vf", f"subtitles={subtitles_path}:force_style='FontName=NotoSansSC-Bold,FontSize=24,PrimaryColour=&HFFFFFF,OutlineColour=&H000000,BorderStyle=3,Outline=2,Shadow=1,Alignment=2'",
+                    "-vf", f"subtitles={subtitles_path}:force_style='FontName=Arial,FontSize=24,PrimaryColour=&HFFFFFF,OutlineColour=&H000000,BorderStyle=3,Outline=2,Shadow=1,Alignment=2'",
                     "-c:a", "copy",
                     output_path
                 ]
                 
-                subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                # Run FFmpeg command
+                process = subprocess.run(cmd, capture_output=True, text=True)
+                if process.returncode != 0:
+                    logger.error(f"FFmpeg error: {process.stderr}")
+                    
+                    # Try an alternative approach if the first one fails
+                    alt_cmd = [
+                        "ffmpeg", "-y",
+                        "-i", original_video_path,
+                        "-vf", f"subtitles={subtitles_path}",
+                        "-c:a", "copy",
+                        output_path
+                    ]
+                    subprocess.run(alt_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    
                 logger.info(f"Chinese translation video created: {output_path}")
                 
                 return output_path
@@ -161,7 +234,7 @@ class VideoMaker:
             
     def _create_subtitles_file(
         self,
-        translations: Dict[str, str],
+        translations: Dict[str, Dict],
         output_path: str
     ) -> None:
         """
@@ -174,10 +247,20 @@ class VideoMaker:
         try:
             with open(output_path, 'w', encoding='utf-8') as f:
                 index = 1
-                for jp_text, translation_info in translations.items():
+                
+                # Sort translations by start time to ensure they appear in correct order
+                sorted_translations = sorted(
+                    translations.items(), 
+                    key=lambda x: x[1].get('start_time', 0)
+                )
+                
+                for jp_text, translation_info in sorted_translations:
+                    if not translation_info.get('text'):
+                        continue
+                        
                     chinese_text = translation_info['text']
-                    start_time = translation_info['start_time']
-                    end_time = translation_info['end_time']
+                    start_time = translation_info.get('start_time', 0)
+                    end_time = translation_info.get('end_time', start_time + 5)  # Default 5 seconds if no end time
                     
                     # Format times as HH:MM:SS,mmm
                     start_formatted = self._format_srt_time(start_time)
@@ -1739,8 +1822,8 @@ class VideoMaker:
                     
                     # 製品名・ブランド名だけのナレーション用テキスト
                     product_name_for_narration = self._prepare_product_name_for_narration(product.get('name'), brand_name)
-                    # product_intro_text = f"{rank}位、{brand_name}の{product_name_for_narration}"
-                    product_intro_text = f"{rank}位、{product_name_for_narration}"
+                    product_intro_text = f"{rank}位、{brand_name}の{product_name_for_narration}"
+                    # product_intro_text = f"{rank}位、{product_name_for_narration}"
                     
                     # 製品紹介ナレーション音声を生成
                     product_audio_path = os.path.join(temp_dir, f"product_{rank}_audio.wav")

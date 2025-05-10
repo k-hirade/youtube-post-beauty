@@ -11,6 +11,7 @@ import argparse
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta
+import subprocess
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
@@ -54,37 +55,6 @@ def setup_logging(log_file: Optional[str] = None, log_level: int = logging.INFO)
         file_handler.setLevel(log_level)
         file_handler.setFormatter(logging.Formatter(log_format))
         logging.getLogger().addHandler(file_handler)
-
-def translate_to_chinese(text: str) -> str:
-    """
-    Translate text from Japanese to Chinese using an LLM
-    
-    Args:
-        text: Japanese text to translate
-        
-    Returns:
-        str: Chinese translation
-    """
-    try:
-        # Use OpenAI's API for translation
-        import openai
-        
-        response = openai.ChatCompletion.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": "You are a professional translator from Japanese to Chinese. Translate the following text to natural, simple Chinese that can be easily understood."},
-                {"role": "user", "content": f"Translate this Japanese text to Chinese:\n\n{text}"}
-            ],
-            temperature=0.3,
-            max_tokens=1024
-        )
-        
-        translated_text = response.choices[0].message.content.strip()
-        return translated_text
-    except Exception as e:
-        logger.error(f"Translation error: {str(e)}")
-        # If translation fails, return original text with error indicator
-        return f"[翻訳エラー] {text}"
 
 def parse_args():
     """コマンドライン引数のパース"""
@@ -381,7 +351,7 @@ def run_pipeline(args):
                 narration_texts = []
                 
                 # Add intro narration
-                intro_title = f"一度はマジで使ってみてほしい{channel}で買える神{genre}挙げてく。これはブックマーク必須やで"
+                intro_title = f"一度はマジで使ってみてほしい{args.channel}で買える神{args.genre}挙げてく。これはブックマーク必須やで"
                 narration_texts.append(intro_title)
                 
                 # Add product narrations
@@ -396,14 +366,33 @@ def run_pipeline(args):
                             if review:
                                 narration_texts.append(str(review))
                 
-                # 2. Analyze video to get timing information
-                timing_data = video_maker.analyze_video_for_narration_timing(output_video, narration_texts)
+                # 2. Create timing information without Whisper
+                timing_data = video_maker.create_narration_timing_data(output_video, narration_texts)
                 
                 # 3. Translate all texts to Chinese
                 for jp_text in timing_data:
-                    chinese_text = translate_to_chinese(jp_text)
-                    timing_data[jp_text]['text'] = chinese_text
-                    logger.info(f"Translated: {jp_text[:30]}... -> {chinese_text[:30]}...")
+                    # Simple translation using OpenAI API
+                    try:
+                        # Use OpenAI's API for translation
+                        from openai import OpenAI
+                        api_key = os.environ.get("OPENAI_API_KEY")
+
+                        client = OpenAI(api_key=api_key)
+                        
+                        response = client.chat.completions.create(
+                            model="gpt-4o",
+                            messages=[
+                                {"role": "user", "content": f"You are a professional translator from Japanese to Chinese. Translate the following text to natural, simple Chinese that can be easily understood. Translate this Japanese text to Chinese:\n\n{jp_text}"}
+                            ],
+                        )
+                        
+                        chinese_text = response.choices[0].message.content.strip()
+                        timing_data[jp_text]['text'] = chinese_text
+                        logger.info(f"Translated: {jp_text[:30]}... -> {chinese_text[:30]}...")
+                    except Exception as e:
+                        logger.error(f"Translation error: {str(e)}")
+                        # If translation fails, use a placeholder
+                        timing_data[jp_text]['text'] = f"中文字幕 ({jp_text[:20]}...)"
                 
                 # 4. Create Chinese version of the video
                 chinese_video_filename = f"video_ch_{timestamp}.mp4"
