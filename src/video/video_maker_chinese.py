@@ -22,7 +22,7 @@ import time
 from openai import OpenAI
 
 # 音声関連のユーティリティをインポート
-from video.voice_utils import generate_narration, get_audio_duration, create_silent_audio, merge_audio_files
+from video.voice_utils import generate_narration, get_audio_duration, create_silent_audio
 from video.video_maker import VideoMaker
 
 # ロガー設定
@@ -32,7 +32,7 @@ class ChineseVideoMaker(VideoMaker):
     """FFmpegを使用して縦型商品紹介動画を作成するクラス（中国語翻訳付き）"""
     
     # 字幕関連の設定
-    SUBTITLE_FONT_SIZE = 38
+    SUBTITLE_FONT_SIZE = 70
     SUBTITLE_COLOR = (255, 255, 255)  # 白色
     SUBTITLE_STROKE_COLOR = (0, 0, 0)  # 黒色
     SUBTITLE_STROKE_WIDTH = 2
@@ -123,6 +123,79 @@ class ChineseVideoMaker(VideoMaker):
         except Exception as e:
             logger.error(f"中国語フォント読み込みエラー: {str(e)}")
             return self.get_font(size)
+
+    def translate_product_name_to_chinese(self, product_info: Dict[str, Any], rank: int) -> str:
+        """
+        商品名と関連情報を中国語に適切に翻訳する特別なメソッド
+        
+        Args:
+            product_info: 製品情報（名前、ブランド名などを含む辞書）
+            rank: 製品ランキング
+            
+        Returns:
+            str: 中国語に翻訳された自然な商品紹介文
+        """
+        if not self.client:
+            logger.warning("OpenAI APIクライアントが初期化されていません。商品名翻訳をスキップします。")
+            # フォールバック：通常のテキスト準備メソッドを使用
+            brand_name = product_info.get('brand', '')
+            product_name = product_info.get('name', '')
+            product_name_for_narration = self._prepare_product_name_for_narration(product_name, brand_name)
+            return f"{rank}位、{brand_name}の{product_name_for_narration}"
+        
+        try:
+            # 関連する製品情報を収集
+            brand_name = product_info.get('brand', '')
+            product_name = product_info.get('name', '')
+            product_type = product_info.get('genre', '')  # 製品カテゴリ（美容液、化粧水など）
+            product_features = product_info.get('catch_copy', '')  # キャッチコピー
+            
+            # 製品の特徴を抽出
+            product_name_for_narration = self._prepare_product_name_for_narration(product_name, brand_name)
+            original_text = f"{rank}位、{brand_name}の{product_name_for_narration}"
+            
+            # 商品名翻訳用の特別なプロンプト
+            prompt = f"""
+            以下は日本の化粧品・美容商品のランキング紹介文です。中国語（簡体字）で自然な商品紹介に翻訳してください。
+            特にブランド名と商品名は中国の消費者向けに適切かつ魅力的な表現に翻訳することが重要です。
+
+            商品情報:
+            - ランキング: {rank}位
+            - ブランド名: {brand_name}
+            - 商品名: {product_name_for_narration}
+            - カテゴリー: {product_type}
+            - キャッチコピー: {product_features}
+
+            日本語原文: {original_text}
+
+            指示:
+            1. ブランド名は中国でも知られている場合はそのまま音訳し、「品牌」という単語は使わない
+            2. 商品名は中国語での一般的な商品表現に合わせて翻訳する
+            3. 「○位」は「第○名」と翻訳する
+            4. 「の」は「的」または適切な中国語表現に翻訳する
+            5. 全体として中国の消費者が理解しやすく、魅力的で自然な中国語表現にすること
+            6. 翻訳文のみを出力すること
+            """
+            
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "user", "content": prompt}
+                ],
+            )
+            
+            translated_text = response.choices[0].message.content.strip()
+            logger.info(f"商品名翻訳: {original_text} -> {translated_text}")
+            return translated_text
+                
+        except Exception as e:
+            logger.error(f"商品名翻訳エラー: {str(e)}")
+            # エラー時は通常の翻訳メソッドにフォールバック
+            brand_name = product_info.get('brand', '')
+            product_name = product_info.get('name', '')
+            product_name_for_narration = self._prepare_product_name_for_narration(product_name, brand_name)
+            product_intro_text = f"{rank}位、{brand_name}の{product_name_for_narration}"
+            return self.translate_to_chinese(product_intro_text)
 
     def create_video_segment_with_subtitle(
         self, 
@@ -367,10 +440,10 @@ class ChineseVideoMaker(VideoMaker):
         
         # 字幕の背景を描画
         padding = self.SUBTITLE_PADDING
-        line_height = self.SUBTITLE_FONT_SIZE + padding
+        line_height = self.SUBTITLE_FONT_SIZE + padding + 20
         
         # 字幕の位置（画面下部）
-        base_y = int(height * y_position_ratio)
+        base_y = int(height * (y_position_ratio - 0.05))
         
         for i, line in enumerate(text_lines):
             # テキスト幅を再計算
@@ -599,15 +672,8 @@ class ChineseVideoMaker(VideoMaker):
         Returns:
             Dict[str, str]: 中国語翻訳のディクショナリ
         """
-        brand_name = product.get('brand', '')
-        product_name = product.get('name', '')
-        
-        # ナレーション用テキストを準備
-        product_name_for_narration = self._prepare_product_name_for_narration(product_name, brand_name)
-        product_intro_text = f"{rank}位、{brand_name}の{product_name_for_narration}"
-        
-        # 中国語に翻訳
-        chinese_intro = self.translate_to_chinese(product_intro_text)
+        # 商品名専用の特化した翻訳メソッドを使用
+        chinese_intro = self.translate_product_name_to_chinese(product, rank)
         
         return {
             'product_intro': chinese_intro
@@ -648,9 +714,11 @@ class ChineseVideoMaker(VideoMaker):
         
         output_path = os.path.join(self.output_dir, output_filename)
         chinese_output_path = os.path.join(self.output_dir, chinese_output_filename)
+
+        narration_speed = 1.0
         
         # 製品リストをシャッフルして順位を割り当て
-        shuffled_products = products[:7]  # 最大7製品までに制限
+        shuffled_products = products[:5]
         total_products = len(shuffled_products)
         for i, product in enumerate(shuffled_products):
             product['new_rank'] = total_products - i 
@@ -688,7 +756,7 @@ class ChineseVideoMaker(VideoMaker):
                 
                 # 4. イントロ音声生成
                 intro_audio_path = os.path.join(temp_dir, "intro_audio.wav")
-                intro_success = generate_narration(intro_title, intro_audio_path, "random")
+                intro_success = generate_narration(intro_title, intro_audio_path, "random", narration_speed)
                 
                 # 効果音パス
                 taiko_sound_path = "data/bgm/和太鼓でドドン.mp3"
@@ -854,7 +922,7 @@ class ChineseVideoMaker(VideoMaker):
                     
                     # 製品紹介ナレーション音声を生成
                     product_audio_path = os.path.join(temp_dir, f"product_{rank}_audio.wav")
-                    success = generate_narration(product_intro_text, product_audio_path, "random")
+                    success = generate_narration(product_intro_text, product_audio_path, "random", narration_speed)
                     
                     # 音声の存在チェック
                     if os.path.exists(product_audio_path) and os.path.getsize(product_audio_path) > 100:
@@ -1052,7 +1120,7 @@ class ChineseVideoMaker(VideoMaker):
                             
                             # コメント用の音声を生成
                             comment_audio_path = os.path.join(temp_dir, f"product_{rank}_comment_{i+1}_audio.wav")
-                            comment_success = generate_narration(review, comment_audio_path, "random")
+                            comment_success = generate_narration(review, comment_audio_path, "random", narration_speed)
                             
                             # 音声ファイルのチェック
                             if not os.path.exists(comment_audio_path) or os.path.getsize(comment_audio_path) < 100:

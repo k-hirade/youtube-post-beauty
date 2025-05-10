@@ -87,7 +87,7 @@ def get_audio_duration(audio_file_path: str) -> float:
         logger.error(f"オーディオ長さ取得エラー: {e}")
         return 0.0
 
-def generate_narration(text: str, output_path: str, voice_type: str = "default") -> bool:
+def generate_narration(text: str, output_path: str, voice_type: str = "default", speed: float = None) -> bool:
     """
     テキストから音声ナレーションを生成する
     
@@ -95,6 +95,7 @@ def generate_narration(text: str, output_path: str, voice_type: str = "default")
     text (str): 音声化するテキスト
     output_path (str): 音声ファイルの出力パス
     voice_type (str): 音声タイプ (default, male, female, random, etc.)
+    speed (float): 再生速度 (None = 環境変数から取得、それ以外は指定した値)
     
     Returns:
     bool: 生成が成功したかどうか
@@ -110,7 +111,8 @@ def generate_narration(text: str, output_path: str, voice_type: str = "default")
         voicevox_available = check_voicevox_available()
         
         if voicevox_available:
-            result = generate_with_voicevox(processed_text, output_path, voice_type)
+            # 速度パラメータの追加
+            result = generate_with_voicevox(processed_text, output_path, voice_type, speed)
             
             # 成功したかファイルの存在を確認
             if os.path.exists(output_path) and os.path.getsize(output_path) > 100:
@@ -245,7 +247,7 @@ def preprocess_text_for_speech(text: str) -> str:
         
     return text
 
-def generate_with_voicevox(text: str, output_path: str, voice_type: str) -> bool:
+def generate_with_voicevox(text: str, output_path: str, voice_type: str, speed: float = None) -> bool:
     """VOICEVOX を使用して音声を生成する（ランダムキャラクター選択版）"""
     try:
         # 入力テキストが空でないか確認
@@ -281,7 +283,12 @@ def generate_with_voicevox(text: str, output_path: str, voice_type: str) -> bool
             
             query_json = response.json()
             query_json["volumeScale"] = 3.5  # 音量調整
-            query_json["speedScale"]  = SPEECH_SPEED
+            
+            # 速度の設定（指定がある場合はその値、なければデフォルト値を使用）
+            if speed is not None:
+                query_json["speedScale"] = speed
+            else:
+                query_json["speedScale"] = SPEECH_SPEED
             
             # 音声合成リクエスト
             response = requests.post(

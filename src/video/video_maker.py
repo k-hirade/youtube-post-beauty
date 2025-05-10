@@ -1350,10 +1350,8 @@ class VideoMaker:
         output_path = os.path.join(self.output_dir, output_filename)
         
         # 製品リストをシャッフルして順位を割り当て
-        shuffled_products = random.sample(products, len(products))
-        shuffled_products = shuffled_products[:7]
-        total_products = len(shuffled_products)
-        for i, product in enumerate(shuffled_products):
+        total_products = len(products)
+        for i, product in enumerate(products):
             product['new_rank'] = total_products - i 
         
         try:
@@ -1366,7 +1364,7 @@ class VideoMaker:
                 intro_title = None
                 channel_intro = title.split('で買える')[0] if 'で買える' in title else ""
                 genre = title.split('で買える')[-1].replace('ランキング', '').strip() if 'で買える' in title else ""
-                for product in shuffled_products:
+                for product in products:
                     if 'channel' in product and 'genre' in product:
                         intro_title = f"一度はマジで使ってみてほしい{channel_intro}で買える神{genre}挙げてく。これはブックマーク必須やで"
                         break
@@ -1553,7 +1551,7 @@ class VideoMaker:
                     video_segments.append(intro_video_path)
                     
                 # 各製品ごとに動画セグメントを作成
-                for product in shuffled_products:
+                for product in products:
                     rank = product['new_rank']
                     product_name = product['name']
                     brand_name = product['brand']
