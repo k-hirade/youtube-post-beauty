@@ -220,3 +220,58 @@ class GCSUploader:
             content_type="video/mp4",
             metadata=metadata
         )
+    
+    def upload_video_chinese(
+        self,
+        video_path: str,
+        title: str,
+        genre: str,
+        channel: str,
+        thumbnail_path: Optional[str] = None
+    ) -> str:
+        """
+        動画をアップロード（後方互換性のために維持）
+        
+        Args:
+            video_path: 動画のローカルパス
+            title: 動画タイトル
+            genre: ジャンル
+            channel: チャンネル
+            thumbnail_path: サムネイルのローカルパス（オプション）
+            
+        Returns:
+            str: アップロードされた動画のGCS URI
+        """
+        # サムネイルが指定されている場合は新しいメソッドを使用
+        if thumbnail_path:
+            video_uri, _ = self.upload_video_and_thumbnail(
+                video_path=video_path,
+                thumbnail_path=thumbnail_path,
+                title=title,
+                genre=genre,
+                channel=channel
+            )
+            return video_uri
+        
+        # サムネイルが指定されていない場合（従来の動作）
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        video_filename = f"video_{timestamp}.mp4"
+        
+        # メタデータの設定
+        metadata = {
+            "title": title,
+            "genre": genre,
+            "channel": channel,
+            "created_at": datetime.now().isoformat(),
+            "content_type": "cosme_shorts_video",
+            "timestamp": timestamp
+        }
+        
+        # 動画アップロード
+        video_gcs_path = f"videos_chinese/{video_filename}"
+        return self.upload_file(
+            local_path=video_path,
+            gcs_path=video_gcs_path,
+            content_type="video/mp4",
+            metadata=metadata
+        )
