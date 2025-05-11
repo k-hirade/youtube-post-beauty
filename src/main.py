@@ -213,12 +213,12 @@ def run_pipeline(args):
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         video_filename = f"video_{timestamp}.mp4"
         video_maker = VideoMaker(temp_dir=temp_image_dir)  # temp_dirを明示的に設定
-        output_video = video_maker.create_video(
-            products=shuffled_products,
-            title=f"{args.channel}で買える{args.genre}ランキング",
-            channel=args.channel,
-            output_filename=video_filename,
-        )
+        # output_video = video_maker.create_video(
+        #     products=shuffled_products,
+        #     title=f"{args.channel}で買える{args.genre}ランキング",
+        #     channel=args.channel,
+        #     output_filename=video_filename,
+        # )
 
         # サムネイルの作成
         thumbnail_filename = f"thumbnail_{timestamp}.png"
@@ -283,16 +283,16 @@ def run_pipeline(args):
                     )
                     
                     # 動画とサムネイルを一緒にアップロード
-                    video_uri, thumbnail_uri = uploader.upload_video_and_thumbnail(
-                        video_path=output_video,
-                        thumbnail_path=thumbnail_path,
-                        title=f"{args.channel}で買える{args.genre}ランキング",
-                        genre=args.genre,
-                        channel=args.channel
-                    )
-                    jp_gcs_uri = video_uri  # 日本語版動画のURIを保存
-                    thumbnail_gcs_uri = thumbnail_uri
-                    logger.info(f"GCSアップロード完了: 動画={jp_gcs_uri}, サムネイル={thumbnail_gcs_uri}")
+                    # video_uri, thumbnail_uri = uploader.upload_video_and_thumbnail(
+                    #     video_path=output_video,
+                    #     thumbnail_path=thumbnail_path,
+                    #     title=f"{args.channel}で買える{args.genre}ランキング",
+                    #     genre=args.genre,
+                    #     channel=args.channel
+                    # )
+                    # jp_gcs_uri = video_uri  # 日本語版動画のURIを保存
+                    # thumbnail_gcs_uri = thumbnail_uri
+                    # logger.info(f"GCSアップロード完了: 動画={jp_gcs_uri}, サムネイル={thumbnail_gcs_uri}")
                     
                     # 中国語翻訳付き動画のアップロード
                     if enable_chinese and chinese_video_path and os.path.exists(chinese_video_path):
@@ -339,21 +339,21 @@ def run_pipeline(args):
 
         # 12. QA ＋ スプレッドシート登録 (日本語版)
         qa = VideoQA()
-        is_ok, metadata, err = qa.validate_video(output_video)
-        metadata["products"] = shuffled_products
-        qa.add_to_spreadsheet(
-            metadata=metadata,
-            genre=args.genre,
-            channel=args.channel,
-            title=f"{args.channel}で買える{args.genre}ランキング",
-            ranking_type=args.ranking_type,
-            gcs_uri=jp_gcs_uri,  # 日本語版のURIを使用
-            thumbnail_gcs_uri=thumbnail_gcs_uri,
-            qa_status="OK" if is_ok else "NG",
-            notes=err,
-            run_id=run_id,
-            social_media_results=social_media_results
-        )
+        # is_ok, metadata, err = qa.validate_video(output_video)
+        # metadata["products"] = shuffled_products
+        # qa.add_to_spreadsheet(
+        #     metadata=metadata,
+        #     genre=args.genre,
+        #     channel=args.channel,
+        #     title=f"{args.channel}で買える{args.genre}ランキング",
+        #     ranking_type=args.ranking_type,
+        #     gcs_uri=jp_gcs_uri,  # 日本語版のURIを使用
+        #     thumbnail_gcs_uri=thumbnail_gcs_uri,
+        #     qa_status="OK" if is_ok else "NG",
+        #     notes=err,
+        #     run_id=run_id,
+        #     social_media_results=social_media_results
+        # )
 
         # 中国語版のスプレッドシート登録
         if enable_chinese and chinese_video_path and os.path.exists(chinese_video_path):

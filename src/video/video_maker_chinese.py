@@ -34,7 +34,7 @@ class ChineseVideoMaker(VideoMaker):
     # 字幕関連の設定
     SUBTITLE_FONT_SIZE = 70  # フォントサイズを少し大きく
     SUBTITLE_COLOR = (255, 255, 255)  # 白色
-    SUBTITLE_POSITION_Y = 0.8  # 画面上から70%の位置に固定
+    SUBTITLE_POSITION_Y = 0.75  # 画面上から70%の位置に固定
     SUBTITLE_MAX_CHARS_PER_LINE = 14  # 1行あたりの最大文字数
     SUBTITLE_BG_COLOR = (0, 0, 0, 180)  # 背景色: 黒色で70%の不透明度
     
