@@ -61,6 +61,8 @@ class VideoMaker:
     COMMENT_CORNER_RADIUS = 0
 
     SOURCE_HAN_SERIF_HEAVY = "/Library/Fonts/SourceHanSerif-Heavy.otf"
+
+    SPEECH_SPEED = float(os.getenv("SPEECH_SPEED", "1.4"))
     
     def __init__(
         self,
@@ -1390,7 +1392,7 @@ class VideoMaker:
                 
                 # イントロ音声生成
                 intro_audio_path = os.path.join(temp_dir, "intro_audio.wav")
-                intro_success = generate_narration(intro_title, intro_audio_path, "random")
+                intro_success = generate_narration(intro_title, intro_audio_path, "random", self.SPEECH_SPEED)
                 
                 taiko_sound_path = "data/bgm/和太鼓でドドン.mp3"
                 syouhin_sound_path = "data/bgm/ニュッ3.mp3"
@@ -1564,7 +1566,7 @@ class VideoMaker:
                     
                     # 製品紹介ナレーション音声を生成
                     product_audio_path = os.path.join(temp_dir, f"product_{rank}_audio.wav")
-                    success = generate_narration(product_intro_text, product_audio_path, "random")
+                    success = generate_narration(product_intro_text, product_audio_path, "random", self.SPEECH_SPEED)
                     
                     # ナレーション音声があれば使用、なければ3秒間の無音
                     if os.path.exists(product_audio_path) and os.path.getsize(product_audio_path) > 100:
@@ -1777,7 +1779,7 @@ class VideoMaker:
                             
                             # コメント用の音声を生成
                             comment_audio_path = os.path.join(temp_dir, f"product_{rank}_comment_{i+1}_audio.wav")
-                            comment_success = generate_narration(review, comment_audio_path, "random")
+                            comment_success = generate_narration(review, comment_audio_path, "random", self.SPEECH_SPEED)
                             
                             # コメントの音声が存在するか確認
                             if not os.path.exists(comment_audio_path) or os.path.getsize(comment_audio_path) < 100:

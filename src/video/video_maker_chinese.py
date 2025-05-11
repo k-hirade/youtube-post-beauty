@@ -32,13 +32,12 @@ class ChineseVideoMaker(VideoMaker):
     """FFmpegを使用して縦型商品紹介動画を作成するクラス（中国語翻訳付き）"""
     
     # 字幕関連の設定
-    SUBTITLE_FONT_SIZE = 70
+    SUBTITLE_FONT_SIZE = 65  # フォントサイズを少し大きく
     SUBTITLE_COLOR = (255, 255, 255)  # 白色
     SUBTITLE_STROKE_COLOR = (0, 0, 0)  # 黒色
-    SUBTITLE_STROKE_WIDTH = 2
-    SUBTITLE_BG_COLOR = (0, 0, 0, 180)  # 半透明の黒
-    SUBTITLE_PADDING = 10  # 字幕の上下左右のパディング
-    SUBTITLE_POSITION_Y = 0.8  # 画面の下から20%の位置
+    SUBTITLE_STROKE_WIDTH = 8  # 縁取りを太く
+    SUBTITLE_POSITION_Y = 0.7  # 画面上から70%の位置に固定
+    SUBTITLE_MAX_CHARS_PER_LINE = 16  # 1行あたりの最大文字数
     
     def __init__(
         self,
@@ -205,7 +204,7 @@ class ChineseVideoMaker(VideoMaker):
         output_path: str
     ) -> bool:
         """
-        字幕付きビデオセグメントを作成する
+        字幕付きビデオセグメントを作成する - 背景なし、縁取りあり、固定位置
         
         Args:
             image_path: スライド画像のパス
@@ -221,12 +220,11 @@ class ChineseVideoMaker(VideoMaker):
             img = Image.open(image_path)
             width, height = img.size
             
-            # 字幕画像を生成
+            # 字幕画像を生成 - 固定位置、縁取りのみ
             subtitle_img = self.create_subtitle_image(
                 chinese_text,
                 width,
-                height,
-                self.SUBTITLE_POSITION_Y
+                height
             )
             
             # 字幕画像の保存先
@@ -279,7 +277,7 @@ class ChineseVideoMaker(VideoMaker):
         output_path: str
     ) -> bool:
         """
-        アニメーション動画に字幕を追加する
+        アニメーション動画に字幕を追加する - 背景なし、縁取りあり、固定位置
         
         Args:
             animation_video_path: アニメーション動画のパス
@@ -306,12 +304,11 @@ class ChineseVideoMaker(VideoMaker):
             width = video_info['streams'][0]['width']
             height = video_info['streams'][0]['height']
             
-            # 字幕画像を生成
+            # 字幕画像を生成 - 固定位置、縁取りのみ
             subtitle_img = self.create_subtitle_image(
                 chinese_text,
                 width,
-                height,
-                self.SUBTITLE_POSITION_Y
+                height
             )
             
             # 字幕画像の保存先
@@ -381,26 +378,79 @@ class ChineseVideoMaker(VideoMaker):
         except Exception as e:
             logger.error(f"翻訳エラー: {str(e)}")
             return text
+
+    def wrap_chinese_text(self, text: str, font: ImageFont.FreeTypeFont, draw: ImageDraw.Draw, max_chars: int = 16) -> List[str]:
+        """
+        中国語テキストを適切な位置で折り返す
+        
+        Args:
+            text: 折り返すテキスト
+            font: フォント
+            draw: ImageDrawオブジェクト
+            max_chars: 1行の最大文字数
+            
+        Returns:
+            List[str]: 折り返された行のリスト
+        """
+        # 元々のテキストが短い場合はそのまま返す
+        if len(text) <= max_chars:
+            return [text]
+        
+        # 折り返し文字（区切り文字）
+        break_chars = '，。！？,.!?;；:： '
+        
+        lines = []
+        remain = text
+        
+        while len(remain) > 0:
+            # 残りテキストが最大文字数以下の場合、そのまま追加して終了
+            if len(remain) <= max_chars:
+                lines.append(remain)
+                break
+            
+            # 最大文字数で一度切る
+            line = remain[:max_chars]
+            
+            # 区切り文字があれば、その位置で切る
+            found = False
+            for i in range(len(line) - 1, -1, -1):
+                if line[i] in break_chars:
+                    # 区切り文字の後で切る（区切り文字は含める）
+                    lines.append(line[:i + 1])
+                    remain = remain[i + 1:]
+                    found = True
+                    break
+            
+            # 区切り文字がなければ、そのまま最大文字数で切る
+            if not found:
+                lines.append(line)
+                remain = remain[max_chars:]
+        
+        return lines
     
     def create_subtitle_image(
         self,
         text: str,
         width: int,
         height: int,
-        y_position_ratio: float = 0.8
+        y_position_ratio: float = None
     ) -> Image.Image:
         """
-        字幕画像を作成
+        字幕画像を作成 - 背景なし、縁取りあり、固定位置
         
         Args:
             text: 字幕テキスト
             width: 画像の幅
             height: 画像の高さ
-            y_position_ratio: 画面の下からの位置比率（0.0～1.0）
+            y_position_ratio: 画面の下からの位置比率（指定がなければ固定値を使用）
             
         Returns:
             Image.Image: 字幕画像
         """
+        # 位置が指定されていない場合はクラス変数の値を使用
+        if y_position_ratio is None:
+            y_position_ratio = self.SUBTITLE_POSITION_Y
+            
         # 透明な画像を作成
         subtitle_img = Image.new("RGBA", (width, height), (0, 0, 0, 0))
         draw = ImageDraw.Draw(subtitle_img)
@@ -408,66 +458,29 @@ class ChineseVideoMaker(VideoMaker):
         # 中国語フォント
         font = self.get_chinese_font(self.SUBTITLE_FONT_SIZE)
         
-        # テキスト計測
-        try:
-            text_width = self.calculate_text_width(text, font, draw)
-        except:
-            # 古いPILバージョン用
-            text_width, _ = draw.textsize(text, font=font)
+        # テキストを最大文字数で折り返す
+        text_lines = self.wrap_chinese_text(text, font, draw, self.SUBTITLE_MAX_CHARS_PER_LINE)
         
-        # テキストが長すぎる場合は折り返す（単純な処理）
-        max_width = width * 0.9  # 画面幅の90%
-        text_lines = []
+        # 行の高さと全体の高さを計算
+        line_height = int(self.SUBTITLE_FONT_SIZE * 1.3)  # 行間を少し広めに
+        total_height = line_height * len(text_lines)
         
-        if text_width > max_width:
-            # 簡易的な折り返し処理（文字数で半分に分割）
-            half = len(text) // 2
-            # 句読点で区切れる位置を探す
-            separator_positions = []
-            for i, char in enumerate(text):
-                if char in "，。！？,.!?,;；":
-                    separator_positions.append(i)
-            
-            # 中間点に最も近い区切り位置を見つける
-            best_pos = half
-            if separator_positions:
-                best_pos = min(separator_positions, key=lambda x: abs(x - half))
-            
-            text_lines.append(text[:best_pos+1])
-            text_lines.append(text[best_pos+1:])
-        else:
-            text_lines.append(text)
+        # 字幕の開始Y座標（画面の上から指定された割合の位置）
+        base_y = int(height * y_position_ratio) - total_height // 2
         
-        # 字幕の背景を描画
-        padding = self.SUBTITLE_PADDING
-        line_height = self.SUBTITLE_FONT_SIZE + padding + 20
-        
-        # 字幕の位置（画面下部）
-        base_y = int(height * (y_position_ratio - 0.05))
-        
+        # 各行を描画
         for i, line in enumerate(text_lines):
-            # テキスト幅を再計算
+            # テキストの幅を計算して中央揃え
             try:
                 line_width = self.calculate_text_width(line, font, draw)
             except:
+                # 古いPILバージョン用
                 line_width, _ = draw.textsize(line, font=font)
-            
+                
             text_x = (width - line_width) // 2
-            text_y = base_y - (len(text_lines) - i) * line_height
+            text_y = base_y + i * line_height
             
-            # 背景ボックスを描画
-            bg_x0 = text_x - padding
-            bg_y0 = text_y - padding
-            bg_x1 = text_x + line_width + padding
-            bg_y1 = text_y + line_height
-            
-            # 半透明の背景
-            draw.rectangle(
-                [(bg_x0, bg_y0), (bg_x1, bg_y1)],
-                fill=self.SUBTITLE_BG_COLOR
-            )
-            
-            # 文字の縁取り効果（アウトライン）
+            # 縁取り効果（アウトライン）
             for dx in range(-self.SUBTITLE_STROKE_WIDTH, self.SUBTITLE_STROKE_WIDTH + 1):
                 for dy in range(-self.SUBTITLE_STROKE_WIDTH, self.SUBTITLE_STROKE_WIDTH + 1):
                     if dx*dx + dy*dy <= self.SUBTITLE_STROKE_WIDTH*self.SUBTITLE_STROKE_WIDTH:
@@ -495,7 +508,7 @@ class ChineseVideoMaker(VideoMaker):
         subtitle_segments: List[Dict[str, Any]]
     ) -> bool:
         """
-        動画に中国語字幕を追加
+        動画に中国語字幕を追加 - 背景なし、縁取りあり、固定位置
         
         Args:
             video_path: 元の動画パス
@@ -537,12 +550,11 @@ class ChineseVideoMaker(VideoMaker):
                 subtitle_inputs = []
                 
                 for i, segment in enumerate(subtitle_segments):
-                    # 中国語字幕画像を作成
+                    # 中国語字幕画像を作成 - 固定位置、縁取りのみ
                     subtitle_img = self.create_subtitle_image(
                         segment['text'],
                         width,
-                        height,
-                        self.SUBTITLE_POSITION_Y
+                        height
                     )
                     
                     # 字幕画像を保存
