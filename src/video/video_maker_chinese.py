@@ -32,12 +32,12 @@ class ChineseVideoMaker(VideoMaker):
     """FFmpegを使用して縦型商品紹介動画を作成するクラス（中国語翻訳付き）"""
     
     # 字幕関連の設定
-    SUBTITLE_FONT_SIZE = 65  # フォントサイズを少し大きく
+    SUBTITLE_FONT_SIZE = 70  # フォントサイズを少し大きく
     SUBTITLE_COLOR = (255, 255, 255)  # 白色
     SUBTITLE_STROKE_COLOR = (0, 0, 0)  # 黒色
-    SUBTITLE_STROKE_WIDTH = 8  # 縁取りを太く
+    SUBTITLE_STROKE_WIDTH = 3  # 縁取りを太く
     SUBTITLE_POSITION_Y = 0.7  # 画面上から70%の位置に固定
-    SUBTITLE_MAX_CHARS_PER_LINE = 16  # 1行あたりの最大文字数
+    SUBTITLE_MAX_CHARS_PER_LINE = 14  # 1行あたりの最大文字数
     
     def __init__(
         self,
@@ -80,13 +80,20 @@ class ChineseVideoMaker(VideoMaker):
         system = platform.system()
         
         if system == 'Darwin':  # macOS
-            self.chinese_font_path = '/Library/Fonts/Hiragino Sans GB.ttc'
-            self.noto_sans_sc_path = '/Library/Fonts/NotoSansSC-Regular.otf'
-            self.noto_sans_sc_bold_path = '/Library/Fonts/NotoSansSC-Bold.otf'
+            # First try system-wide fonts
+            self.chinese_font_path = '/Library/Fonts/MicrosoftYaHeiBold.ttf'
+            self.noto_sans_sc_path = '/Library/Fonts/MicrosoftYaHeiBold.ttf'
+            self.noto_sans_sc_bold_path = '/Library/Fonts/MicrosoftYaHeiBold.ttf'
+            
+            if not os.path.exists(self.chinese_font_path):
+                home_dir = os.path.expanduser('~')
+                self.chinese_font_path = os.path.join(home_dir, 'Library/Fonts/MicrosoftYaHeiBold.ttf')
+                self.noto_sans_sc_path = os.path.join(home_dir, 'Library/Fonts/MicrosoftYaHeiBold.ttf')
+                self.noto_sans_sc_bold_path = os.path.join(home_dir, 'Library/Fonts/MicrosoftYaHeiBold.ttf')
         else:  # Linux
-            self.chinese_font_path = '/usr/share/fonts/opentype/noto/NotoSansSC-Regular.otf'
-            self.noto_sans_sc_path = '/usr/share/fonts/opentype/noto/NotoSansSC-Regular.otf'
-            self.noto_sans_sc_bold_path = '/usr/share/fonts/opentype/noto/NotoSansSC-Bold.otf'
+            self.chinese_font_path = '/usr/share/fonts/opentype/noto/MicrosoftYaHeiBold.ttf'
+            self.noto_sans_sc_path = '/usr/share/fonts/opentype/noto/MicrosoftYaHeiBold.ttf'
+            self.noto_sans_sc_bold_path = '/usr/share/fonts/opentype/noto/MicrosoftYaHeiBold.ttf'
         
         # 中国語フォントが存在するか確認
         if not os.path.exists(self.chinese_font_path):
@@ -379,7 +386,7 @@ class ChineseVideoMaker(VideoMaker):
             logger.error(f"翻訳エラー: {str(e)}")
             return text
 
-    def wrap_chinese_text(self, text: str, font: ImageFont.FreeTypeFont, draw: ImageDraw.Draw, max_chars: int = 16) -> List[str]:
+    def wrap_chinese_text(self, text: str, font: ImageFont.FreeTypeFont, draw: ImageDraw.Draw, max_chars: int = 14) -> List[str]:
         """
         中国語テキストを適切な位置で折り返す
         
