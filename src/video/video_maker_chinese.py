@@ -34,10 +34,9 @@ class ChineseVideoMaker(VideoMaker):
     # 字幕関連の設定
     SUBTITLE_FONT_SIZE = 70  # フォントサイズを少し大きく
     SUBTITLE_COLOR = (255, 255, 255)  # 白色
-    SUBTITLE_STROKE_COLOR = (0, 0, 0)  # 黒色
-    SUBTITLE_STROKE_WIDTH = 3  # 縁取りを太く
-    SUBTITLE_POSITION_Y = 0.7  # 画面上から70%の位置に固定
+    SUBTITLE_POSITION_Y = 0.8  # 画面上から70%の位置に固定
     SUBTITLE_MAX_CHARS_PER_LINE = 14  # 1行あたりの最大文字数
+    SUBTITLE_BG_COLOR = (0, 0, 0, 180)  # 背景色: 黒色で70%の不透明度
     
     def __init__(
         self,
@@ -443,10 +442,11 @@ class ChineseVideoMaker(VideoMaker):
         y_position_ratio: float = None
     ) -> Image.Image:
         """
-        字幕画像を作成 - 背景なし、縁取りあり、固定位置
+        字幕画像を作成 - 固定サイズの背景あり（常に表示）、縁取りなし、固定位置
+        テキストが1行の場合は背景の縦方向中央に配置
         
         Args:
-            text: 字幕テキスト
+            text: 字幕テキスト（空文字でも背景は表示）
             width: 画像の幅
             height: 画像の高さ
             y_position_ratio: 画面の下からの位置比率（指定がなければ固定値を使用）
@@ -465,49 +465,68 @@ class ChineseVideoMaker(VideoMaker):
         # 中国語フォント
         font = self.get_chinese_font(self.SUBTITLE_FONT_SIZE)
         
-        # テキストを最大文字数で折り返す
-        text_lines = self.wrap_chinese_text(text, font, draw, self.SUBTITLE_MAX_CHARS_PER_LINE)
-        
-        # 行の高さと全体の高さを計算
+        # 行の高さと全体の高さを計算（二行分の固定高さ）
         line_height = int(self.SUBTITLE_FONT_SIZE * 1.3)  # 行間を少し広めに
-        total_height = line_height * len(text_lines)
+        fixed_height = line_height * 2  # 二行分の高さを固定
         
         # 字幕の開始Y座標（画面の上から指定された割合の位置）
-        base_y = int(height * y_position_ratio) - total_height // 2
+        base_y = int(height * y_position_ratio) - fixed_height // 2
         
-        # 各行を描画
-        for i, line in enumerate(text_lines):
-            # テキストの幅を計算して中央揃え
-            try:
-                line_width = self.calculate_text_width(line, font, draw)
-            except:
-                # 古いPILバージョン用
-                line_width, _ = draw.textsize(line, font=font)
+        # 背景色の設定 - 半透明の黒色
+        bg_color = self.SUBTITLE_BG_COLOR  # クラス変数から取得
+        bg_padding_y = 15  # 垂直方向のパディング
+        
+        # 背景の描画（画面横幅いっぱい、高さは二行分）
+        bg_width = width  # 画面の幅いっぱい
+        bg_height = fixed_height + bg_padding_y * 2
+        bg_y = base_y - bg_padding_y
+        
+        # 背景を描画（角丸なし、画面いっぱい）
+        draw.rectangle(
+            [(0, bg_y), (bg_width, bg_y + bg_height)],
+            fill=bg_color
+        )
+        
+        # テキストがある場合のみ描画
+        if text:
+            # テキストを最大文字数で折り返す
+            text_lines = self.wrap_chinese_text(text, font, draw, self.SUBTITLE_MAX_CHARS_PER_LINE)
+            
+            # テキスト行数に制限（二行まで）
+            if len(text_lines) > 2:
+                text_lines = text_lines[:2]
+            
+            # 行数に応じて縦方向の位置を調整
+            if len(text_lines) == 1:
+                # 1行の場合は背景の中央に配置
+                vertical_center = bg_y + bg_height // 2 - line_height // 2
+                text_y_positions = [vertical_center]
+            else:
+                # 複数行の場合は通常の配置
+                text_y_positions = [base_y + i * line_height for i in range(len(text_lines))]
+            
+            # 各行を描画
+            for i, line in enumerate(text_lines):
+                # テキストの幅を計算して中央揃え
+                try:
+                    line_width = self.calculate_text_width(line, font, draw)
+                except:
+                    # 古いPILバージョン用
+                    line_width, _ = draw.textsize(line, font=font)
+                    
+                text_x = (width - line_width) // 2
+                text_y = text_y_positions[i]
                 
-            text_x = (width - line_width) // 2
-            text_y = base_y + i * line_height
-            
-            # 縁取り効果（アウトライン）
-            for dx in range(-self.SUBTITLE_STROKE_WIDTH, self.SUBTITLE_STROKE_WIDTH + 1):
-                for dy in range(-self.SUBTITLE_STROKE_WIDTH, self.SUBTITLE_STROKE_WIDTH + 1):
-                    if dx*dx + dy*dy <= self.SUBTITLE_STROKE_WIDTH*self.SUBTITLE_STROKE_WIDTH:
-                        draw.text(
-                            (text_x + dx, text_y + dy),
-                            line,
-                            font=font,
-                            fill=self.SUBTITLE_STROKE_COLOR
-                        )
-            
-            # メインテキストを描画
-            draw.text(
-                (text_x, text_y),
-                line,
-                font=font,
-                fill=self.SUBTITLE_COLOR
-            )
+                # メインテキストを描画（縁取りなし）
+                draw.text(
+                    (text_x, text_y),
+                    line,
+                    font=font,
+                    fill=self.SUBTITLE_COLOR
+                )
         
         return subtitle_img
-    
+        
     def add_chinese_subtitles(
         self,
         video_path: str,
