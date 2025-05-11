@@ -779,11 +779,11 @@ class SocialMediaScheduler:
     def configure_schedule(self):
         """スケジュール設定"""
         # 朝: 6:00から7:00まで15分ごとに1本
-        schedule.every().day.at("06:00").do(self.process_posting_job, time_slot="morning")
-        schedule.every().day.at("06:15").do(self.process_posting_job, time_slot="morning")
-        schedule.every().day.at("06:30").do(self.process_posting_job, time_slot="morning")
-        schedule.every().day.at("06:45").do(self.process_posting_job, time_slot="morning")
         schedule.every().day.at("07:00").do(self.process_posting_job, time_slot="morning")
+        schedule.every().day.at("07:15").do(self.process_posting_job, time_slot="morning")
+        schedule.every().day.at("07:30").do(self.process_posting_job, time_slot="morning")
+        schedule.every().day.at("07:45").do(self.process_posting_job, time_slot="morning")
+        schedule.every().day.at("08:00").do(self.process_posting_job, time_slot="morning")
         
         # 昼: 11:00から12:00まで15分ごとに1本
         schedule.every().day.at("11:00").do(self.process_posting_job, time_slot="noon")
