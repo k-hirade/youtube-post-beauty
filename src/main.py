@@ -213,12 +213,12 @@ def run_pipeline(args):
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         video_filename = f"video_{timestamp}.mp4"
         video_maker = VideoMaker(temp_dir=temp_image_dir)  # temp_dirを明示的に設定
-        # output_video = video_maker.create_video(
-        #     products=shuffled_products,
-        #     title=f"{args.channel}で買える{args.genre}ランキング",
-        #     channel=args.channel,
-        #     output_filename=video_filename,
-        # )
+        output_video = video_maker.create_video(
+            products=shuffled_products,
+            title=f"{args.channel}で買える{args.genre}ランキング",
+            channel=args.channel,
+            output_filename=video_filename,
+        )
 
         # サムネイルの作成
         thumbnail_filename = f"thumbnail_{timestamp}.png"
@@ -230,35 +230,35 @@ def run_pipeline(args):
         )
 
         # 10. 中国語翻訳付き動画の作成（追加）
-        chinese_video_path = ""
-        chinese_gcs_uri = ""
-        chinese_output_filename = f"video_chinese_{timestamp}.mp4"
+        # chinese_video_path = ""
+        # chinese_gcs_uri = ""
+        # chinese_output_filename = f"video_chinese_{timestamp}.mp4"
         
-        enable_chinese = os.environ.get("ENABLE_CHINESE_TRANSLATION", "").lower() == "true"
+        # enable_chinese = os.environ.get("ENABLE_CHINESE_TRANSLATION", "").lower() == "true"
         
-        if enable_chinese:
-            try:
-                logger.info("中国語翻訳付き動画の作成を開始します")
+        # if enable_chinese:
+        #     try:
+        #         logger.info("中国語翻訳付き動画の作成を開始します")
                 
-                # 中国語動画メーカーのインスタンス化
-                chinese_video_maker = ChineseVideoMaker(temp_dir=temp_image_dir)
+        #         # 中国語動画メーカーのインスタンス化
+        #         chinese_video_maker = ChineseVideoMaker(temp_dir=temp_image_dir)
                 
-                # 日本語と中国語の動画を作成
-                _, chinese_video_path = chinese_video_maker.create_video_with_chinese(
-                    products=shuffled_products,
-                    title=f"{args.channel}で買える{args.genre}ランキング",
-                    channel=args.channel,
-                    output_filename=video_filename,
-                    chinese_output_filename=chinese_output_filename
-                )
+        #         # 日本語と中国語の動画を作成
+        #         _, chinese_video_path = chinese_video_maker.create_video_with_chinese(
+        #             products=shuffled_products,
+        #             title=f"{args.channel}で買える{args.genre}ランキング",
+        #             channel=args.channel,
+        #             output_filename=video_filename,
+        #             chinese_output_filename=chinese_output_filename
+        #         )
                 
-                logger.info(f"中国語翻訳付き動画の作成完了: {chinese_video_path}")
-            except Exception as e:
-                logger.error(f"中国語翻訳付き動画の作成中にエラーが発生しました: {str(e)}")
-                import traceback
-                logger.error(traceback.format_exc())
-        else:
-            logger.info("中国語翻訳付き動画の作成はスキップされました (ENABLE_CHINESE_TRANSLATION=false)")
+        #         logger.info(f"中国語翻訳付き動画の作成完了: {chinese_video_path}")
+        #     except Exception as e:
+        #         logger.error(f"中国語翻訳付き動画の作成中にエラーが発生しました: {str(e)}")
+        #         import traceback
+        #         logger.error(traceback.format_exc())
+        # else:
+        #     logger.info("中国語翻訳付き動画の作成はスキップされました (ENABLE_CHINESE_TRANSLATION=false)")
 
         gcs_upload = os.environ.get("GCS_UPLOAD")
 
@@ -283,30 +283,30 @@ def run_pipeline(args):
                     )
                     
                     # 動画とサムネイルを一緒にアップロード
-                    # video_uri, thumbnail_uri = uploader.upload_video_and_thumbnail(
-                    #     video_path=output_video,
-                    #     thumbnail_path=thumbnail_path,
-                    #     title=f"{args.channel}で買える{args.genre}ランキング",
-                    #     genre=args.genre,
-                    #     channel=args.channel
-                    # )
-                    # jp_gcs_uri = video_uri  # 日本語版動画のURIを保存
-                    # thumbnail_gcs_uri = thumbnail_uri
-                    # logger.info(f"GCSアップロード完了: 動画={jp_gcs_uri}, サムネイル={thumbnail_gcs_uri}")
+                    video_uri, thumbnail_uri = uploader.upload_video_and_thumbnail(
+                        video_path=output_video,
+                        thumbnail_path=thumbnail_path,
+                        title=f"{args.channel}で買える{args.genre}ランキング",
+                        genre=args.genre,
+                        channel=args.channel
+                    )
+                    jp_gcs_uri = video_uri
+                    thumbnail_gcs_uri = thumbnail_uri
+                    logger.info(f"GCSアップロード完了: 動画={jp_gcs_uri}, サムネイル={thumbnail_gcs_uri}")
                     
                     # 中国語翻訳付き動画のアップロード
-                    if enable_chinese and chinese_video_path and os.path.exists(chinese_video_path):
-                        try:
-                            cn_gcs_uri = uploader.upload_video_chinese(
-                                video_path=chinese_video_path,
-                                title=f"{args.channel}で買える{args.genre}ランキング【中文字幕版】",
-                                genre=args.genre,
-                                channel=args.channel,
-                                thumbnail_path=thumbnail_path  # 同じサムネイルを使用
-                            )
-                            logger.info(f"中国語動画GCSアップロード完了: {cn_gcs_uri}")
-                        except Exception as e:
-                            logger.error(f"中国語動画GCSアップロードエラー: {str(e)}")
+                    # if enable_chinese and chinese_video_path and os.path.exists(chinese_video_path):
+                    #     try:
+                    #         cn_gcs_uri = uploader.upload_video_chinese(
+                    #             video_path=chinese_video_path,
+                    #             title=f"{args.channel}で買える{args.genre}ランキング【中文字幕版】",
+                    #             genre=args.genre,
+                    #             channel=args.channel,
+                    #             thumbnail_path=thumbnail_path  # 同じサムネイルを使用
+                    #         )
+                    #         logger.info(f"中国語動画GCSアップロード完了: {cn_gcs_uri}")
+                    #     except Exception as e:
+                    #         logger.error(f"中国語動画GCSアップロードエラー: {str(e)}")
                 except Exception as e:
                     logger.error(f"GCSアップロード中にエラーが発生しました: {str(e)}")
         else:
@@ -339,47 +339,47 @@ def run_pipeline(args):
 
         # 12. QA ＋ スプレッドシート登録 (日本語版)
         qa = VideoQA()
-        # is_ok, metadata, err = qa.validate_video(output_video)
-        # metadata["products"] = shuffled_products
-        # qa.add_to_spreadsheet(
-        #     metadata=metadata,
-        #     genre=args.genre,
-        #     channel=args.channel,
-        #     title=f"{args.channel}で買える{args.genre}ランキング",
-        #     ranking_type=args.ranking_type,
-        #     gcs_uri=jp_gcs_uri,  # 日本語版のURIを使用
-        #     thumbnail_gcs_uri=thumbnail_gcs_uri,
-        #     qa_status="OK" if is_ok else "NG",
-        #     notes=err,
-        #     run_id=run_id,
-        #     social_media_results=social_media_results
-        # )
+        is_ok, metadata, err = qa.validate_video(output_video)
+        metadata["products"] = shuffled_products
+        qa.add_to_spreadsheet(
+            metadata=metadata,
+            genre=args.genre,
+            channel=args.channel,
+            title=f"{args.channel}で買える{args.genre}ランキング",
+            ranking_type=args.ranking_type,
+            gcs_uri=jp_gcs_uri,  # 日本語版のURIを使用
+            thumbnail_gcs_uri=thumbnail_gcs_uri,
+            qa_status="OK" if is_ok else "NG",
+            notes=err,
+            run_id=run_id,
+            social_media_results=social_media_results
+        )
 
         # 中国語版のスプレッドシート登録
-        if enable_chinese and chinese_video_path and os.path.exists(chinese_video_path):
-            try:
-                chinese_qa = VideoQA()  # 新しいインスタンスを作成
-                is_ok_cn, metadata_cn, err_cn = chinese_qa.validate_video(chinese_video_path)
-                # メタデータに製品情報を追加
-                metadata_cn["products"] = selected_with_reviews
+        # if enable_chinese and chinese_video_path and os.path.exists(chinese_video_path):
+        #     try:
+        #         chinese_qa = VideoQA()  # 新しいインスタンスを作成
+        #         is_ok_cn, metadata_cn, err_cn = chinese_qa.validate_video(chinese_video_path)
+        #         # メタデータに製品情報を追加
+        #         metadata_cn["products"] = selected_with_reviews
                 
-                # 中国語翻訳付き動画をスプレッドシートに追加
-                chinese_qa.add_to_chinese_spreadsheet(
-                    metadata=metadata_cn,
-                    genre=args.genre,
-                    channel=args.channel,
-                    title=f"{args.channel}で買える{args.genre}ランキング",
-                    ranking_type=args.ranking_type,
-                    gcs_uri=cn_gcs_uri,  # 中国語版のURIを使用
-                    thumbnail_gcs_uri=thumbnail_gcs_uri,
-                    qa_status="OK" if is_ok_cn else "NG",
-                    notes=err_cn,
-                    run_id=run_id,
-                    social_media_results=None
-                )
-                logger.info("中国語翻訳付き動画をスプレッドシートに追加しました")
-            except Exception as e:
-                logger.error(f"中国語翻訳付き動画のスプレッドシート追加エラー: {str(e)}")
+        #         # 中国語翻訳付き動画をスプレッドシートに追加
+        #         chinese_qa.add_to_chinese_spreadsheet(
+        #             metadata=metadata_cn,
+        #             genre=args.genre,
+        #             channel=args.channel,
+        #             title=f"{args.channel}で買える{args.genre}ランキング",
+        #             ranking_type=args.ranking_type,
+        #             gcs_uri=cn_gcs_uri,  # 中国語版のURIを使用
+        #             thumbnail_gcs_uri=thumbnail_gcs_uri,
+        #             qa_status="OK" if is_ok_cn else "NG",
+        #             notes=err_cn,
+        #             run_id=run_id,
+        #             social_media_results=None
+        #         )
+        #         logger.info("中国語翻訳付き動画をスプレッドシートに追加しました")
+        #     except Exception as e:
+        #         logger.error(f"中国語翻訳付き動画のスプレッドシート追加エラー: {str(e)}")
 
         # 最終的なステータス更新には日本語版のURIを使用
         db.update_run_status(
